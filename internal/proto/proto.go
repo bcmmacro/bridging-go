@@ -9,8 +9,13 @@ import (
 )
 
 type Args struct {
-	WsID string      `json:"ws_id"`
-	Msg  interface{} `json:"msg"`
+	Method  string                 `json:"method,omitempty"`
+	URL     string                 `json:"url,omitempty"`
+	Headers map[string]interface{} `json:"headers,omitempty"`
+	Client  map[string]interface{} `json:"client,omitempty"`
+	Body    []byte                 `json:"body,omitempty"`
+	WSID    string                 `json:"ws_id,omitempty"`
+	Msg     string                 `json:"msg,omitempty"`
 }
 
 type Packet struct {
