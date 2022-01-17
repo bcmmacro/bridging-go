@@ -11,7 +11,8 @@ import (
 
 func main() {
 	router := httprouter.New()
-	setUpRoute(router)
+	proc := NewHandler()
+	setUpRoute(router, proc)
 	handler := http2.CreateCORS(router, "")
 
 	port := ":5000"
