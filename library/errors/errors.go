@@ -35,6 +35,12 @@ const (
 	clientErrCodeMax = 4999
 )
 
+func Check(e error) {
+	if e != nil {
+		panic(e)
+	}
+}
+
 // IsClientErrCode returns true if the code is 4xxx
 func IsClientErrCode(code int) bool {
 	return code >= clientErrCodeMin && code <= clientErrCodeMax
