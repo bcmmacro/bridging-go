@@ -9,7 +9,8 @@ import (
 
 func main() {
 	conf := argParse(os.Args)
-	fmt.Println(conf)
+	gw := Gateway{}
+	gw.Run(conf)
 }
 
 func argParse(args []string) *config.Config {
