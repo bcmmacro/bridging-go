@@ -5,6 +5,7 @@ import (
 	"time"
 
 	"github.com/gorilla/websocket"
+	"github.com/rs/cors"
 	"github.com/sirupsen/logrus"
 
 	errors2 "github.com/bcmmacro/bridging-go/library/errors"
@@ -12,11 +13,12 @@ import (
 )
 
 type Handler struct {
+	corsCheck *cors.Cors
 	forwarder *Forwarder
 }
 
-func NewHandler() *Handler {
-	return &Handler{forwarder: NewForwarder()}
+func NewHandler(corsCheck *cors.Cors) *Handler {
+	return &Handler{forwarder: NewForwarder(), corsCheck: corsCheck}
 }
 
 func (h *Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
@@ -26,11 +28,16 @@ func (h *Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	isWebsocket := r.Header.Get("Upgrade") == "websocket"
 	if isWebsocket {
 		// TODO(zzl) buf size should be configurable
-		// TODO(zzl) support checkorigin check
+		var isBridge = r.URL.Path == "/bridge"
 		var upgrader = websocket.Upgrader{
 			ReadBufferSize:  32 * 1024 * 1024,
 			WriteBufferSize: 32 * 1024 * 1024,
-			CheckOrigin:     func(r *http.Request) bool { return true }}
+			CheckOrigin: func(r *http.Request) bool {
+				if isBridge {
+					return true
+				}
+				return h.corsCheck.OriginAllowed(r)
+			}}
 		conn, err := upgrader.Upgrade(w, r, nil)
 		if err != nil {
 			logrus.Warnf("failed to upgrade websocket %v", err)
@@ -38,7 +45,7 @@ func (h *Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 
-		if r.URL.Path == "/bridge" {
+		if isBridge {
 			// TODO(zzl) change to Query param
 			bridgingToken := r.Header.Get("bridging-token")
 			h.forwarder.Serve(bridgingToken, conn)

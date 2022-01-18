@@ -5,11 +5,11 @@ import (
 	"log"
 	"net/http"
 	"os"
+	"strings"
 
 	"github.com/joho/godotenv"
+	"github.com/rs/cors"
 	"github.com/sirupsen/logrus"
-
-	http2 "github.com/bcmmacro/bridging-go/library/http"
 )
 
 func main() {
@@ -19,13 +19,19 @@ func main() {
 		log.Fatalf("failed to load .env error[%v]", err)
 	}
 
-	proc := NewHandler()
-	handler := http2.CreateCORS(proc, os.Getenv("BRIDGE_CORS_ALLOW_ORIGINS"), os.Getenv("BRIDGE_CORS_ALLOW_METHODS"), os.Getenv("BRIDGE_CORS_ALLOW_HEADERS"))
+	c := cors.New(cors.Options{
+		OptionsPassthrough: false,
+		AllowCredentials:   true,
+		AllowedOrigins:     strings.Split(os.Getenv("BRIDGE_CORS_ALLOW_ORIGINS"), ","),
+		AllowedMethods:     strings.Split(os.Getenv("BRIDGE_CORS_ALLOW_METHODS"), ","),
+		AllowedHeaders:     strings.Split(os.Getenv("BRIDGE_CORS_ALLOW_HEADERS"), ","),
+	})
+	handler := NewHandler(c)
 
 	port := ":8000"
 	if portEnv := os.Getenv("PORT"); portEnv != "" {
 		port = fmt.Sprintf(":%s", os.Getenv("PORT"))
 	}
 	logrus.Infof("listenging on port %s", port)
-	logrus.Fatal(http.ListenAndServe(port, handler))
+	logrus.Fatal(http.ListenAndServe(port, c.Handler(handler)))
 }
