@@ -10,12 +10,15 @@ import (
 )
 
 func main() {
+	logrus.SetFormatter(&logrus.TextFormatter{})
+
 	router := httprouter.New()
 	proc := NewHandler()
-	setUpRoute(router, proc)
-	handler := http2.CreateCORS(router, "")
+	router.GET("/*path", proc.HandleGet)
+	handler := http2.CreateCORS(router, "*")
 
-	port := ":5000"
+	// TODO(zzl) make port configurable
+	port := ":8000"
 	logrus.Infof("listenging on port %s", port)
 	logrus.Fatal(http.ListenAndServe(port, handler))
 }

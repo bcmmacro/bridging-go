@@ -4,24 +4,40 @@ import (
 	"bytes"
 	"compress/gzip"
 	"encoding/json"
+	"fmt"
+	"io/ioutil"
+	"net/http"
 
 	"github.com/sirupsen/logrus"
 )
 
 type Args struct {
-	Method  string                 `json:"method,omitempty"`
-	URL     string                 `json:"url,omitempty"`
-	Headers map[string]interface{} `json:"headers,omitempty"`
-	Client  map[string]interface{} `json:"client,omitempty"`
-	Body    []byte                 `json:"body,omitempty"`
-	WSID    string                 `json:"ws_id,omitempty"`
-	Msg     string                 `json:"msg,omitempty"`
+	Method     string            `json:"method,omitempty"` // http method
+	URL        string            `json:"url,omitempty"`
+	Headers    map[string]string `json:"headers,omitempty"` // TODO(zzl) change to map[string][]string
+	Client     string            `json:"client,omitempty"`
+	WSID       string            `json:"ws_id,omitempty"`
+	Msg        string            `json:"msg,omitempty"`
+	StatusCode int64             `json:"status_code,omitempty"`
+	Exception  string            `json:"exception,omitempty"`
+	Body       []byte            `json:"body,omitempty"`
+	Content    string            `json:"content,omitempty"` // TODO(zzl) remove either Body or Content
+}
+
+func (args *Args) String() string {
+	s, _ := json.Marshal(args)
+	return string(s)
 }
 
 type Packet struct {
 	CorrID string `json:"corr_id"`
-	Method string `json:"method"`
-	Args   Args   `json:"args"`
+	Method string `json:"method"` // desired operation: http, http_result, open_websocket etc.
+	Args   *Args  `json:"args"`
+}
+
+func (p *Packet) String() string {
+	s, _ := json.Marshal(p)
+	return string(s)
 }
 
 func Deserialize(data []byte) (*Packet, error) {
@@ -75,4 +91,27 @@ func (p *Packet) Serialize(level int) ([]byte, error) {
 		return nil, err
 	}
 	return buf.Bytes(), nil
+}
+
+func MakeHTTPReqArgs(r *http.Request) (*Args, error) {
+	var args Args
+	args.Method = r.Method
+
+	// TODO(zzl) should split URL
+	args.URL = fmt.Sprintf("http://%s%s", r.Host, r.URL.String())
+	args.Client = r.Host
+
+	args.Headers = make(map[string]string)
+	for k, v := range r.Header {
+		for _, vv := range v {
+			args.Headers[k] = vv
+		}
+	}
+
+	if body, err := ioutil.ReadAll(r.Body); err != nil {
+		return nil, err
+	} else {
+		args.Body = body
+	}
+	return &args, nil
 }
