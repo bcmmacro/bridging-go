@@ -64,7 +64,7 @@ func (f *Forwarder) ForwardHTTP(w http.ResponseWriter, r *http.Request) {
 
 func (f *Forwarder) Serve(bridging_token string, ws *websocket.Conn) {
 	client := ws.RemoteAddr().String()
-	logrus.Info("connected bridge client[%s]", client)
+	logrus.Infof("connected bridge client[%s]", client)
 
 	if f.bridge != nil {
 		logrus.Infof("duplicate bridge ws connection client[%s]", client)
@@ -87,7 +87,6 @@ func (f *Forwarder) Serve(bridging_token string, ws *websocket.Conn) {
 		logrus.Debugf("read %d", len(buf))
 		msg, err := proto.Deserialize(buf)
 		if err != nil {
-			// logrus.Warnf("invalid msg[%s] error[%v]", buf[0:size], err)
 			continue
 		}
 
