@@ -10,7 +10,7 @@ type ctxKeyLogger struct{}
 
 func init() {
 	formatter := logrus.TextFormatter{
-		TimestampFormat: "2006-01-02 15:04:05:000",
+		TimestampFormat: "2006-01-02 15:04:05.000",
 		FullTimestamp:   true,
 	}
 	logrus.SetFormatter(&formatter)

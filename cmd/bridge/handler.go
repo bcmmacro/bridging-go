@@ -19,9 +19,7 @@ type Handler struct {
 }
 
 func NewHandler(corsCheck *cors.Cors) *Handler {
-	// TODO(zzl) buf size can be configurable
 	return &Handler{forwarder: NewForwarder(), upgrader: &websocket.Upgrader{
-		ReadBufferSize: 32 * 1024 * 1024, WriteBufferSize: 32 * 1024 * 1024,
 		CheckOrigin: func(r *http.Request) bool {
 			if r.URL.Path == "/bridge" {
 				return true
