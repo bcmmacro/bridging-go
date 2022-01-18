@@ -46,3 +46,11 @@ func ByteSliceToIntSlice(s []byte) []int8 {
 	}
 	return ret
 }
+
+func IntSliceToByteSlice(s []int8) []byte {
+	ret := make([]byte, len(s))
+	for i, b := range s {
+		ret[i] = byte(b)
+	}
+	return ret
+}
