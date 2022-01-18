@@ -55,6 +55,12 @@ func Deserialize(ctx context.Context, data []byte) (*Packet, error) {
 	logger := log.Ctx(ctx)
 	buf := bytes.NewBuffer(data)
 	r, err := gzip.NewReader(buf)
+	defer func() {
+		if err := r.Close(); err != nil {
+			logger.Warnf("failed to close gzip reader error[%v]", err)
+		}
+	}()
+
 	if err != nil {
 		logger.Warnf("failed to decompress error[%v]", err)
 		return nil, err

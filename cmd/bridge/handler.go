@@ -42,6 +42,12 @@ func (h *Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 
+		defer func() {
+			conn.WriteControl(websocket.CloseMessage, websocket.FormatCloseMessage(websocket.CloseGoingAway, ""), time.Now().Add(time.Second*3))
+			conn.Close()
+			logger.Infof("closed websocket")
+		}()
+
 		if r.URL.Path == "/bridge" {
 			// TODO(zzl) change to Query param
 			bridgingToken := r.Header.Get("bridging-token")
@@ -52,18 +58,20 @@ func (h *Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 				logger.Warnf("failed to open websocket error[%v]", err)
 			} else {
 				for {
-					_, msg, err := conn.ReadMessage()
+					msgType, msg, err := conn.ReadMessage()
 					if err != nil {
 						logger.Warnf("failed to read websocket error[%v]", err)
 						break
 					}
-					h.forwarder.ForwardWebsocketMsg(ctx, wsID, conn, msg)
+					if msgType == websocket.BinaryMessage || msgType == websocket.TextMessage {
+						h.forwarder.ForwardWebsocketMsg(ctx, wsID, conn, msg)
+					} else {
+						logger.Infof("drop message type[%d]", msgType)
+					}
 				}
 			}
 			h.forwarder.ForwardCloseWebsocket(ctx, wsID, conn)
 		}
-		conn.WriteControl(websocket.CloseMessage, websocket.FormatCloseMessage(websocket.CloseGoingAway, ""), time.Now().Add(time.Second*3))
-		conn.Close()
 	} else {
 		h.forwarder.ForwardHTTP(ctx, w, r)
 	}
