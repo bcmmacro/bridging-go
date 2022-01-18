@@ -2,9 +2,9 @@ package main
 
 import (
 	"net/http"
+	"strings"
 
 	"github.com/gorilla/websocket"
-	"github.com/julienschmidt/httprouter"
 	"github.com/sirupsen/logrus"
 
 	errors2 "github.com/bcmmacro/bridging-go/library/errors"
@@ -19,10 +19,10 @@ func NewHandler() *Handler {
 	return &Handler{forwarder: NewForwarder()}
 }
 
-func (h *Handler) HandleGet(w http.ResponseWriter, r *http.Request, ps httprouter.Params) {
+func (h *Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	// TODO(zzl) insert logger to context and set req ID
-	logrus.Infof("recv GET %s %s", r.RemoteAddr, r.URL.String())
-	if r.URL.Path == "/bridge" {
+	logrus.Infof("recv %s %s %s", r.Method, r.RemoteAddr, r.URL.String())
+	if strings.ToUpper(r.Method) == "GET" && r.URL.Path == "/bridge" {
 		// TODO(zzl) buf size should be configurable
 		var upgrader = websocket.Upgrader{ReadBufferSize: 32 * 1024 * 1024, WriteBufferSize: 32 * 1024 * 1024}
 		conn, err := upgrader.Upgrade(w, r, nil)

@@ -84,7 +84,7 @@ func (f *Forwarder) Serve(bridging_token string, ws *websocket.Conn) {
 			logrus.Warnf("reading from bridge ws error[%v]", err)
 			break
 		}
-		logrus.Infof("read %d", len(buf))
+		logrus.Debugf("read %d", len(buf))
 		msg, err := proto.Deserialize(buf)
 		if err != nil {
 			// logrus.Warnf("invalid msg[%s] error[%v]", buf[0:size], err)

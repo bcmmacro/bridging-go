@@ -3,7 +3,6 @@ package main
 import (
 	"net/http"
 
-	"github.com/julienschmidt/httprouter"
 	"github.com/sirupsen/logrus"
 
 	http2 "github.com/bcmmacro/bridging-go/library/http"
@@ -12,10 +11,8 @@ import (
 func main() {
 	logrus.SetFormatter(&logrus.TextFormatter{})
 
-	router := httprouter.New()
 	proc := NewHandler()
-	router.GET("/*path", proc.HandleGet)
-	handler := http2.CreateCORS(router, "*")
+	handler := http2.CreateCORS(proc, "*")
 
 	// TODO(zzl) make port configurable
 	port := ":8000"

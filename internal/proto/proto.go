@@ -20,7 +20,7 @@ type Args struct {
 	Msg        string            `json:"msg,omitempty"`
 	StatusCode int64             `json:"status_code,omitempty"`
 	Exception  string            `json:"exception,omitempty"`
-	Body       []byte            `json:"body,omitempty"`
+	Body       string            `json:"body,omitempty"`
 	Content    string            `json:"content,omitempty"` // TODO(zzl) remove either Body or Content
 }
 
@@ -111,7 +111,7 @@ func MakeHTTPReqArgs(r *http.Request) (*Args, error) {
 	if body, err := ioutil.ReadAll(r.Body); err != nil {
 		return nil, err
 	} else {
-		args.Body = body
+		args.Body = string(body)
 	}
 	return &args, nil
 }
