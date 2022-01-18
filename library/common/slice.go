@@ -25,9 +25,17 @@ func CutStr(s string, limit int) string {
 	return s[:limit]
 }
 
-func Cut(s []interface{}, limit int) []interface{} {
+func CutInt(s []int64, limit int) []int64 {
 	if len(s) < limit {
 		return s
 	}
 	return s[:limit]
+}
+
+func ByteSliceToIntSlice(s []byte) []int64 {
+	ret := make([]int64, len(s))
+	for i, b := range s {
+		ret[i] = int64(b)
+	}
+	return ret
 }
