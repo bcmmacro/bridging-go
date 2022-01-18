@@ -98,7 +98,11 @@ func MakeHTTPReqArgs(r *http.Request) (*Args, error) {
 	args.Method = r.Method
 
 	// TODO(zzl) should split URL
-	args.URL = fmt.Sprintf("http://%s%s", r.Host, r.URL.String())
+	scheme := "http"
+	if r.Header.Get("Upgrade") == "websocket" {
+		scheme = "ws"
+	}
+	args.URL = fmt.Sprintf("%s://%s%s", scheme, r.Host, r.URL.String())
 	args.Client = r.Host
 
 	args.Headers = make(map[string]string)
@@ -109,6 +113,7 @@ func MakeHTTPReqArgs(r *http.Request) (*Args, error) {
 	}
 
 	if body, err := ioutil.ReadAll(r.Body); err != nil {
+		logrus.Warnf("failed to read body error[%v]", err)
 		return nil, err
 	} else {
 		args.Body = string(body)

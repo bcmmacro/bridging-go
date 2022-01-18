@@ -1,10 +1,12 @@
 package main
 
 import (
+	"fmt"
 	"net/http"
 	"os"
 	"strconv"
 	"sync"
+	"time"
 
 	"github.com/google/uuid"
 	"github.com/gorilla/websocket"
@@ -22,6 +24,7 @@ type Forwarder struct {
 	bridge        *websocket.Conn
 	mutex         sync.Mutex
 	reqs          map[string]chan *proto.Args
+	wss           map[string]*websocket.Conn
 }
 
 func NewForwarder() *Forwarder {
@@ -33,7 +36,11 @@ func NewForwarder() *Forwarder {
 			return nil
 		}
 	}
-	return &Forwarder{bridgingToken: os.Getenv("BRIDGE_TOKEN"), compressLevel: level, reqs: make(map[string]chan *proto.Args)}
+	return &Forwarder{
+		bridgingToken: os.Getenv("BRIDGE_TOKEN"),
+		compressLevel: level,
+		reqs:          make(map[string]chan *proto.Args),
+		wss:           make(map[string]*websocket.Conn)}
 }
 
 func (f *Forwarder) ForwardHTTP(w http.ResponseWriter, r *http.Request) {
@@ -60,6 +67,65 @@ func (f *Forwarder) ForwardHTTP(w http.ResponseWriter, r *http.Request) {
 		w.Header()[k] = []string{v}
 	}
 	w.Write([]byte(resp.Content))
+}
+
+func (f *Forwarder) ForwardOpenWebsocket(r *http.Request, ws *websocket.Conn) (string, error) {
+	if f.bridge == nil {
+		return "", fmt.Errorf("invalid")
+	}
+	bridgingBaseURL := r.URL.Query().Get("bridging-base-url")
+	if bridgingBaseURL == "" {
+		return "", fmt.Errorf("invalid")
+	}
+	wsID := uuid.New().String()
+	args, err := proto.MakeHTTPReqArgs(r)
+	if err != nil {
+		return "", err
+	}
+	args.WSID = wsID
+	resp, err := f.req("open_websocket", args)
+	if err != nil {
+		return "", err
+	}
+	if resp.Exception != "" {
+		logrus.Warnf("failed to open websocket error[%v]", resp.Exception)
+		return "", fmt.Errorf(resp.Exception)
+	}
+	f.mutex.Lock()
+	f.wss[wsID] = ws
+	f.mutex.Unlock()
+	return wsID, nil
+}
+
+func (f *Forwarder) ForwardWebsocketMsg(wsID string, ws *websocket.Conn, msg []byte) error {
+	if f.bridge == nil {
+		return fmt.Errorf("invalid")
+	}
+
+	p := proto.Packet{
+		CorrID: "0",
+		Method: "websocket_msg",
+		Args:   &proto.Args{WSID: wsID, Msg: string(msg)}}
+	return f.send(&p)
+}
+
+func (f *Forwarder) ForwardCloseWebsocket(wsID string, ws *websocket.Conn) error {
+	if f.bridge == nil {
+		return fmt.Errorf("invalid")
+	}
+
+	f.mutex.Lock()
+	if _, ok := f.wss[wsID]; !ok {
+		f.mutex.Unlock()
+		return nil
+	}
+	f.mutex.Unlock()
+
+	_, err := f.req("close_websocket", &proto.Args{WSID: wsID})
+	f.mutex.Lock()
+	delete(f.wss, wsID)
+	f.mutex.Unlock()
+	return err
 }
 
 func (f *Forwarder) Serve(bridging_token string, ws *websocket.Conn) {
@@ -93,8 +159,26 @@ func (f *Forwarder) Serve(bridging_token string, ws *websocket.Conn) {
 		if msg.CorrID == "0" {
 			if msg.Method == "close_websocket" {
 				logrus.Infof("recv msg[%v]", msg)
+				wsID := msg.Args.WSID
+				f.mutex.Lock()
+				ws, ok := f.wss[wsID]
+				if ok {
+					delete(f.wss, wsID)
+				}
+				f.mutex.Unlock()
+				if ok {
+					ws.WriteControl(websocket.CloseMessage, websocket.FormatCloseMessage(websocket.CloseGoingAway, ""), time.Now().Add(time.Second*3))
+					ws.Close()
+				}
 			} else if msg.Method == "websocket_msg" {
 				logrus.Debugf("recv msg[%v]", msg)
+				wsID := msg.Args.WSID
+				f.mutex.Lock()
+				ws, ok := f.wss[wsID]
+				f.mutex.Unlock()
+				if ok {
+					ws.WriteMessage(websocket.TextMessage, []byte(msg.Args.Msg))
+				}
 			}
 		} else {
 			logrus.Infof("recv msg[%v]", msg)
