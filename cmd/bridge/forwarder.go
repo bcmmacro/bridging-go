@@ -187,10 +187,11 @@ func (f *Forwarder) Serve(ctx context.Context, bridgingToken string, ws *websock
 			logger.Infof("recv msg[%v]", msg)
 
 			f.mutex.Lock()
-			if ch, ok := f.reqs[msg.CorrID]; ok {
+			ch, ok := f.reqs[msg.CorrID]
+			f.mutex.Unlock()
+			if ok {
 				ch <- msg.Args
 			}
-			f.mutex.Unlock()
 		}
 	}
 

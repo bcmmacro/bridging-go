@@ -9,6 +9,7 @@ import (
 	"io/ioutil"
 	"net/http"
 
+	"github.com/bcmmacro/bridging-go/library/common"
 	"github.com/bcmmacro/bridging-go/library/log"
 )
 
@@ -26,8 +27,17 @@ type Args struct {
 }
 
 func (args *Args) String() string {
-	s, _ := json.Marshal(args)
+	s, _ := json.Marshal(args.truncated())
 	return string(s)
+}
+
+// to avoid long unreadable log lines
+func (args *Args) truncated() *Args {
+	return &Args{Method: args.Method, URL: args.URL,
+		Headers: args.Headers, Client: args.Client, WSID: args.WSID,
+		Msg: common.CutStr(args.Msg, 1000), StatusCode: args.StatusCode, Exception: args.Exception,
+		Body: common.CutStr(args.Body, 1000), Content: common.CutStr(args.Content, 1000),
+	}
 }
 
 type Packet struct {
@@ -37,7 +47,7 @@ type Packet struct {
 }
 
 func (p *Packet) String() string {
-	s, _ := json.Marshal(p)
+	s, _ := json.Marshal(&Packet{CorrID: p.CorrID, Method: p.Method, Args: p.Args.truncated()})
 	return string(s)
 }
 
@@ -108,7 +118,7 @@ func MakeHTTPReqArgs(ctx context.Context, r *http.Request) (*Args, error) {
 		scheme = "ws"
 	}
 	args.URL = fmt.Sprintf("%s://%s%s", scheme, r.Host, r.URL.String())
-	args.Client = r.Host
+	args.Client = r.RemoteAddr
 
 	args.Headers = make(map[string]string)
 	for k, v := range r.Header {

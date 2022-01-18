@@ -17,3 +17,17 @@ func Difference(s1, s2 map[int64]bool) []int64 {
 	}
 	return ret
 }
+
+func CutStr(s string, limit int) string {
+	if len(s) < limit {
+		return s
+	}
+	return s[:limit]
+}
+
+func Cut(s []interface{}, limit int) []interface{} {
+	if len(s) < limit {
+		return s
+	}
+	return s[:limit]
+}
