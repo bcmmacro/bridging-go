@@ -14,12 +14,20 @@ import (
 )
 
 type Handler struct {
-	corsCheck *cors.Cors
 	forwarder *Forwarder
+	upgrader  *websocket.Upgrader
 }
 
 func NewHandler(corsCheck *cors.Cors) *Handler {
-	return &Handler{forwarder: NewForwarder(), corsCheck: corsCheck}
+	// TODO(zzl) buf size can be configurable
+	return &Handler{forwarder: NewForwarder(), upgrader: &websocket.Upgrader{
+		ReadBufferSize: 32 * 1024 * 1024, WriteBufferSize: 32 * 1024 * 1024,
+		CheckOrigin: func(r *http.Request) bool {
+			if r.URL.Path == "/bridge" {
+				return true
+			}
+			return corsCheck.OriginAllowed(r)
+		}}}
 }
 
 func (h *Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
@@ -29,25 +37,14 @@ func (h *Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 
 	isWebsocket := r.Header.Get("Upgrade") == "websocket"
 	if isWebsocket {
-		// TODO(zzl) buf size should be configurable
-		var isBridge = r.URL.Path == "/bridge"
-		var upgrader = websocket.Upgrader{
-			ReadBufferSize:  32 * 1024 * 1024,
-			WriteBufferSize: 32 * 1024 * 1024,
-			CheckOrigin: func(r *http.Request) bool {
-				if isBridge {
-					return true
-				}
-				return h.corsCheck.OriginAllowed(r)
-			}}
-		conn, err := upgrader.Upgrade(w, r, nil)
+		conn, err := h.upgrader.Upgrade(w, r, nil)
 		if err != nil {
 			logger.Warnf("failed to upgrade websocket %v", err)
 			http2.WriteErr(w, r, errors2.ErrInternal)
 			return
 		}
 
-		if isBridge {
+		if r.URL.Path == "/bridge" {
 			// TODO(zzl) change to Query param
 			bridgingToken := r.Header.Get("bridging-token")
 			h.forwarder.Serve(ctx, bridgingToken, conn)

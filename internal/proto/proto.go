@@ -22,7 +22,7 @@ type Args struct {
 	Msg        string            `json:"msg,omitempty"`
 	StatusCode int64             `json:"status_code,omitempty"`
 	Exception  string            `json:"exception,omitempty"`
-	Body       []int64           `json:"body,omitempty"`
+	Body       []int8            `json:"body,omitempty"`
 	Content    string            `json:"content,omitempty"` // TODO(zzl) remove either Body or Content
 }
 
@@ -36,7 +36,7 @@ func (args *Args) truncated() *Args {
 	return &Args{Method: args.Method, URL: args.URL,
 		Headers: args.Headers, Client: args.Client, WSID: args.WSID,
 		Msg: common.CutStr(args.Msg, 1000), StatusCode: args.StatusCode, Exception: args.Exception,
-		Body: common.CutInt(args.Body, 1000), Content: common.CutStr(args.Content, 1000),
+		Body: common.CutInt8(args.Body, 1000), Content: common.CutStr(args.Content, 1000),
 	}
 }
 
