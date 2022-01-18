@@ -2,7 +2,6 @@ package main
 
 import (
 	"fmt"
-	"log"
 	"net/http"
 	"os"
 	"strings"
@@ -10,13 +9,13 @@ import (
 	"github.com/joho/godotenv"
 	"github.com/rs/cors"
 	"github.com/sirupsen/logrus"
+
+	_ "github.com/bcmmacro/bridging-go/library/log"
 )
 
 func main() {
-	logrus.SetFormatter(&logrus.TextFormatter{})
-
 	if err := godotenv.Load(); err != nil {
-		log.Fatalf("failed to load .env error[%v]", err)
+		logrus.Fatalf("failed to load .env error[%v]", err)
 	}
 
 	c := cors.New(cors.Options{

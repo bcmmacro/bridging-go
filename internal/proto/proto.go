@@ -3,12 +3,13 @@ package proto
 import (
 	"bytes"
 	"compress/gzip"
+	"context"
 	"encoding/json"
 	"fmt"
 	"io/ioutil"
 	"net/http"
 
-	"github.com/sirupsen/logrus"
+	"github.com/bcmmacro/bridging-go/library/log"
 )
 
 type Args struct {
@@ -40,60 +41,64 @@ func (p *Packet) String() string {
 	return string(s)
 }
 
-func Deserialize(data []byte) (*Packet, error) {
+func Deserialize(ctx context.Context, data []byte) (*Packet, error) {
+	logger := log.Ctx(ctx)
 	buf := bytes.NewBuffer(data)
 	r, err := gzip.NewReader(buf)
 	if err != nil {
-		logrus.Warnf("failed to decompress error[%v]", err)
+		logger.Warnf("failed to decompress error[%v]", err)
 		return nil, err
 	}
 
 	var b bytes.Buffer
 	_, err = b.ReadFrom(r)
 	if err != nil {
-		logrus.Warnf("failed to read from decompressed buffer error[%v]", err)
+		logger.Warnf("failed to read from decompressed buffer error[%v]", err)
 		return nil, err
 	}
 
 	var p Packet
 	err = json.Unmarshal(b.Bytes(), &p)
 	if err != nil {
-		logrus.Warnf("failed to unmarshal json error[%v]", err)
+		logger.Warnf("failed to unmarshal json error[%v]", err)
 		return nil, err
 	}
 	return &p, nil
 }
 
-func (p *Packet) Serialize(level int) ([]byte, error) {
+func (p *Packet) Serialize(ctx context.Context, level int) ([]byte, error) {
+	logger := log.Ctx(ctx)
 	data, err := json.Marshal(p)
 	if err != nil {
-		logrus.Warnf("failed to marshal packet error[%v]", err)
+		logger.Warnf("failed to marshal packet error[%v]", err)
 		return nil, err
 	}
 
 	var buf bytes.Buffer
 	w, err := gzip.NewWriterLevel(&buf, level)
 	if err != nil {
-		logrus.Warnf("failed to create gzip writer error[%v]", err)
+		logger.Warnf("failed to create gzip writer error[%v]", err)
 		return nil, err
 	}
 	_, err = w.Write(data)
 	if err != nil {
-		logrus.Warnf("failed to compress error[%v]", err)
+		logger.Warnf("failed to compress error[%v]", err)
 		return nil, err
 	}
 	if err = w.Flush(); err != nil {
-		logrus.Warnf("failed to flush writer error[%v]", err)
+		logger.Warnf("failed to flush writer error[%v]", err)
 		return nil, err
 	}
 	if err = w.Close(); err != nil {
-		logrus.Warnf("failed to close writer error[%v]", err)
+		logger.Warnf("failed to close writer error[%v]", err)
 		return nil, err
 	}
 	return buf.Bytes(), nil
 }
 
-func MakeHTTPReqArgs(r *http.Request) (*Args, error) {
+func MakeHTTPReqArgs(ctx context.Context, r *http.Request) (*Args, error) {
+	logger := log.Ctx(ctx)
+
 	var args Args
 	args.Method = r.Method
 
@@ -113,7 +118,7 @@ func MakeHTTPReqArgs(r *http.Request) (*Args, error) {
 	}
 
 	if body, err := ioutil.ReadAll(r.Body); err != nil {
-		logrus.Warnf("failed to read body error[%v]", err)
+		logger.Warnf("failed to read body error[%v]", err)
 		return nil, err
 	} else {
 		args.Body = string(body)
