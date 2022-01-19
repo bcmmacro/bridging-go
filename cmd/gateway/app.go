@@ -24,7 +24,7 @@ type Gateway struct {
 func NewGateway() *Gateway {
 	return &Gateway{
 		bridge: nil,
-		ws:     make(map[string]*websocket.Conn),
+		ws:     map[string]*websocket.Conn{},
 	}
 }
 
