@@ -13,6 +13,7 @@ import (
 	"github.com/gorilla/websocket"
 
 	"github.com/bcmmacro/bridging-go/internal/proto"
+	"github.com/bcmmacro/bridging-go/library/common"
 	"github.com/bcmmacro/bridging-go/library/errors"
 	errors2 "github.com/bcmmacro/bridging-go/library/errors"
 	http2 "github.com/bcmmacro/bridging-go/library/http"
@@ -46,7 +47,7 @@ func NewForwarder() *Forwarder {
 
 func (f *Forwarder) ForwardHTTP(ctx context.Context, w http.ResponseWriter, r *http.Request) {
 	if f.bridge == nil {
-		http2.WriteErr(w, r, errors.ErrInternal.WithData("bridge is not up"))
+		http2.WriteErr(w, r, errors.ErrInternal)
 		return
 	}
 
@@ -104,8 +105,9 @@ func (f *Forwarder) ForwardWebsocketMsg(ctx context.Context, wsID string, ws *we
 		return fmt.Errorf("invalid")
 	}
 
+	_, corrID := common.CorrIDCtx(ctx)
 	p := proto.Packet{
-		CorrID: "0",
+		CorrID: corrID,
 		Method: "websocket_msg",
 		Args:   &proto.Args{WSID: wsID, Msg: string(msg)}}
 	return f.send(ctx, &p)
@@ -148,49 +150,53 @@ func (f *Forwarder) Serve(ctx context.Context, bridgingToken string, ws *websock
 	f.bridge = ws
 
 	for {
-		_, buf, err := ws.ReadMessage()
+		msgType, buf, err := ws.ReadMessage()
 		if err != nil {
 			logger.Warnf("reading from bridge ws error[%v]", err)
 			break
 		}
 		logger.Debugf("read %d", len(buf))
-		msg, err := proto.Deserialize(ctx, buf)
+		if msgType != websocket.BinaryMessage {
+			logger.Infof("drop msg type[%d]", msgType)
+			continue
+		}
+		packet, err := proto.Deserialize(ctx, buf)
 		if err != nil {
 			continue
 		}
+		// use the CorrID from the message
+		_, logger2 := common.CorrIDCtxLogger(common.CtxWithCorrID(ctx, packet.CorrID))
 
-		if msg.CorrID == "0" {
-			if msg.Method == "close_websocket" {
-				logger.Infof("recv msg[%v]", msg)
-				wsID := msg.Args.WSID
-				f.mutex.Lock()
-				ws, ok := f.wss[wsID]
-				if ok {
-					delete(f.wss, wsID)
-				}
-				f.mutex.Unlock()
-				if ok {
-					ws.WriteControl(websocket.CloseMessage, websocket.FormatCloseMessage(websocket.CloseGoingAway, ""), time.Now().Add(time.Second*3))
-					ws.Close()
-				}
-			} else if msg.Method == "websocket_msg" {
-				logger.Debugf("recv msg[%v]", msg)
-				wsID := msg.Args.WSID
-				f.mutex.Lock()
-				ws, ok := f.wss[wsID]
-				f.mutex.Unlock()
-				if ok {
-					ws.WriteMessage(websocket.TextMessage, []byte(msg.Args.Msg))
-				}
-			}
-		} else {
-			logger.Infof("recv msg[%v]", msg)
-
+		if packet.Method == "close_websocket" {
+			logger2.Infof("recv [%v]", packet)
+			wsID := packet.Args.WSID
 			f.mutex.Lock()
-			ch, ok := f.reqs[msg.CorrID]
+			ws, ok := f.wss[wsID]
+			if ok {
+				delete(f.wss, wsID)
+			}
 			f.mutex.Unlock()
 			if ok {
-				ch <- msg.Args
+				ws.WriteControl(websocket.CloseMessage, websocket.FormatCloseMessage(websocket.CloseGoingAway, ""), time.Now().Add(time.Second*3))
+				ws.Close()
+			}
+		} else if packet.Method == "websocket_msg" {
+			logger2.Debugf("recv [%v]", packet)
+			wsID := packet.Args.WSID
+			f.mutex.Lock()
+			ws, ok := f.wss[wsID]
+			f.mutex.Unlock()
+			if ok {
+				ws.WriteMessage(websocket.TextMessage, []byte(packet.Args.Msg))
+			}
+		} else {
+			logger2.Infof("recv [%v]", packet)
+
+			f.mutex.Lock()
+			ch, ok := f.reqs[packet.CorrID]
+			f.mutex.Unlock()
+			if ok {
+				ch <- packet.Args
 			}
 		}
 	}
@@ -200,20 +206,20 @@ func (f *Forwarder) Serve(ctx context.Context, bridgingToken string, ws *websock
 }
 
 func (f *Forwarder) req(ctx context.Context, method string, args *proto.Args) (*proto.Args, error) {
-	corr_id := uuid.New().String()
+	_, corrID := common.CorrIDCtx(ctx)
 	c := make(chan *proto.Args)
 
 	f.mutex.Lock()
-	f.reqs[corr_id] = c
+	f.reqs[corrID] = c
 	f.mutex.Unlock()
 
 	defer func() {
 		f.mutex.Lock()
-		delete(f.reqs, corr_id)
+		delete(f.reqs, corrID)
 		f.mutex.Unlock()
 	}()
 
-	var p = proto.Packet{CorrID: corr_id, Method: method, Args: args}
+	var p = proto.Packet{CorrID: corrID, Method: method, Args: args}
 	if err := f.send(ctx, &p); err != nil {
 		return nil, err
 	}
@@ -225,13 +231,12 @@ func (f *Forwarder) send(ctx context.Context, p *proto.Packet) error {
 	logger := log.Ctx(ctx)
 	msg, err := p.Serialize(ctx, int(f.compressLevel))
 	if err != nil {
-		logger.Warnf("failed to serialize %s", *p)
 		return err
 	}
 	logger.Infof("send [%s]", p)
 	err = f.bridge.WriteMessage(websocket.BinaryMessage, msg)
 	if err != nil {
-		logger.Warnf("failed to send %v", err)
+		logger.Warnf("failed to send error[%v]", err)
 	}
 	return err
 }

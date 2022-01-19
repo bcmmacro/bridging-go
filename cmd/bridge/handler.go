@@ -10,7 +10,6 @@ import (
 	"github.com/bcmmacro/bridging-go/library/common"
 	errors2 "github.com/bcmmacro/bridging-go/library/errors"
 	http2 "github.com/bcmmacro/bridging-go/library/http"
-	"github.com/bcmmacro/bridging-go/library/log"
 )
 
 type Handler struct {
@@ -29,8 +28,7 @@ func NewHandler(corsCheck *cors.Cors) *Handler {
 }
 
 func (h *Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
-	ctx, logger := log.WithField(r.Context(), "ReqID", common.RandomInt64())
-	r = r.WithContext(ctx)
+	ctx, logger := common.CorrIDCtxLogger(r.Context())
 	logger.Infof("recv %s %s %s", r.Method, r.RemoteAddr, r.URL.String())
 
 	isWebsocket := r.Header.Get("Upgrade") == "websocket"
@@ -59,6 +57,7 @@ func (h *Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 			} else {
 				for {
 					msgType, msg, err := conn.ReadMessage()
+					ctx, logger = common.CorrIDCtxLogger(r.Context())
 					if err != nil {
 						logger.Warnf("failed to read websocket error[%v]", err)
 						break
@@ -69,8 +68,8 @@ func (h *Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 						logger.Infof("drop message type[%d]", msgType)
 					}
 				}
+				h.forwarder.ForwardCloseWebsocket(ctx, wsID, conn)
 			}
-			h.forwarder.ForwardCloseWebsocket(ctx, wsID, conn)
 		}
 	} else {
 		h.forwarder.ForwardHTTP(ctx, w, r)

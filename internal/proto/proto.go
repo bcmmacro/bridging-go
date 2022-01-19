@@ -22,7 +22,7 @@ type Args struct {
 	Msg        string            `json:"msg,omitempty"`
 	StatusCode int64             `json:"status_code,omitempty"`
 	Exception  string            `json:"exception,omitempty"`
-	Body       []int8            `json:"body,omitempty"`
+	Body       []int8            `json:"body,omitempty"`    // TODO(zzl) type []byte Bytes and add a Marshal() to Bytes
 	Content    string            `json:"content,omitempty"` // TODO(zzl) remove either Body or Content
 }
 
@@ -102,11 +102,11 @@ func (p *Packet) Serialize(ctx context.Context, level int) ([]byte, error) {
 		return nil, err
 	}
 	if err = w.Flush(); err != nil {
-		logger.Warnf("failed to flush writer error[%v]", err)
+		logger.Warnf("failed to flush gzip writer error[%v]", err)
 		return nil, err
 	}
 	if err = w.Close(); err != nil {
-		logger.Warnf("failed to close writer error[%v]", err)
+		logger.Warnf("failed to close gzip writer error[%v]", err)
 		return nil, err
 	}
 	return buf.Bytes(), nil
