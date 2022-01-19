@@ -6,8 +6,6 @@ import (
 	"context"
 	"encoding/json"
 	"net/http"
-	"net/url"
-	"strings"
 
 	"github.com/gorilla/websocket"
 	"github.com/sirupsen/logrus"
@@ -21,6 +19,13 @@ import (
 type Gateway struct {
 	bridge *websocket.Conn
 	ws     map[string]*websocket.Conn
+}
+
+func NewGateway() *Gateway {
+	return &Gateway{
+		bridge: nil,
+		ws:     make(map[string]*websocket.Conn),
+	}
 }
 
 // Run starts the gateway, connects to bridge before accepting incoming requests via websockets.
@@ -119,7 +124,7 @@ func (gw *Gateway) handleOpenWebsocket(ctx context.Context, corrID string, args 
 	logger := log.Ctx(ctx)
 	wsid := args.WSID
 
-	url, err := wsUrlTransform(args)
+	url, err := args.WsUrlTransform()
 	if err != nil {
 		logger.Warn("Failed to transform url to it's intended destination")
 		return
@@ -132,9 +137,6 @@ func (gw *Gateway) handleOpenWebsocket(ctx context.Context, corrID string, args 
 	defer ws.Close()
 	logger.Infof("Connected ws url[%v]\n", url)
 
-	if gw.ws == nil {
-		gw.ws = make(map[string]*websocket.Conn)
-	}
 	// Store downstream websocket connections in Gateway
 	gw.ws[wsid] = ws
 	p := createProtoPackage(corrID, proto.OPEN_WEBSOCKET_RESULT, &proto.Args{WSID: wsid})
@@ -211,7 +213,7 @@ func createProtoPackage(corrID string, method proto.PacketMethod, args *proto.Ar
 // deserializeRequest converts Args to a http request.
 func deserializeRequest(ctx context.Context, args *proto.Args) (*http.Request, error) {
 	logger := log.Ctx(ctx)
-	url, err := urlTransform(args)
+	url, err := args.UrlTransform()
 	if err != nil {
 		logger.Warn("Failed to transform url to it's intended destination")
 		return nil, err
@@ -227,37 +229,4 @@ func deserializeRequest(ctx context.Context, args *proto.Args) (*http.Request, e
 		req.Header.Add(k, v)
 	}
 	return req, nil
-}
-
-// urlTransform replaces original url to bridging-base-url.
-func urlTransform(args *proto.Args) (string, error) {
-	url, err := url.Parse(args.URL)
-	if err != nil {
-		return "", err
-	}
-
-	for k, v := range args.Headers {
-		if strings.ToLower(k) == "bridging-base-url" {
-			url.Host = v
-		}
-	}
-	return url.String(), nil
-}
-
-// wsUrlTransform is the sibling function to urlTransform for websocket destination.
-func wsUrlTransform(args *proto.Args) (string, error) {
-	url, err := url.Parse(args.URL)
-	if err != nil {
-		return "", err
-	}
-
-	for k, v := range url.Query() {
-		if k == "bridging-base-url" {
-			url.Host = v[0]
-			u := url.Query()
-			u.Del("bridging-base-url")
-			url.RawQuery = u.Encode()
-		}
-	}
-	return url.String(), nil
 }

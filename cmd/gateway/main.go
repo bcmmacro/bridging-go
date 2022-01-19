@@ -9,7 +9,7 @@ import (
 
 func main() {
 	conf := argParse(os.Args)
-	gw := Gateway{}
+	gw := NewGateway()
 	gw.Run(conf)
 }
 

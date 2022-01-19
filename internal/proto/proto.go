@@ -9,6 +9,8 @@ import (
 	"fmt"
 	"io/ioutil"
 	"net/http"
+	"net/url"
+	"strings"
 
 	"github.com/bcmmacro/bridging-go/library/common"
 	"github.com/bcmmacro/bridging-go/library/log"
@@ -39,6 +41,39 @@ func (args *Args) truncated() *Args {
 		Msg: common.CutStr(args.Msg, 1000), StatusCode: args.StatusCode, Exception: args.Exception,
 		Body: common.CutInt8(args.Body, 1000), Content: common.CutStr(args.Content, 1000),
 	}
+}
+
+// urlTransform replaces original url to bridging-base-url.
+func (args *Args) UrlTransform() (string, error) {
+	url, err := url.Parse(args.URL)
+	if err != nil {
+		return "", err
+	}
+
+	for k, v := range args.Headers {
+		if strings.ToLower(k) == "bridging-base-url" {
+			url.Host = v
+		}
+	}
+	return url.String(), nil
+}
+
+// wsUrlTransform is the sibling function to urlTransform for websocket destination.
+func (args *Args) WsUrlTransform() (string, error) {
+	url, err := url.Parse(args.URL)
+	if err != nil {
+		return "", err
+	}
+
+	for k, v := range url.Query() {
+		if k == "bridging-base-url" {
+			url.Host = v[0]
+			u := url.Query()
+			u.Del("bridging-base-url")
+			url.RawQuery = u.Encode()
+		}
+	}
+	return url.String(), nil
 }
 
 type PacketMethod int
