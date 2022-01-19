@@ -41,10 +41,6 @@ func (gw *Gateway) connect(bridge_netloc string, bridge_token string) {
 	logrus.Info("Connected to bridge")
 	gw.bridge = wss
 
-	// done := make(chan struct{})
-
-	// go func() {
-	// 	defer close(done)
 	for {
 		// TODO: read from header instead
 		_, wsMsg, err := wss.ReadMessage()
@@ -63,10 +59,10 @@ func (gw *Gateway) connect(bridge_netloc string, bridge_token string) {
 		args := msg.Args
 
 		if method == "http" {
-			gw.handleHttp(ctx, corrID, args)
+			go gw.handleHttp(ctx, corrID, args)
 		}
 	}
-	// }()
+
 }
 
 // send transmits a packet from gateway to bridge
@@ -76,11 +72,10 @@ func (gw *Gateway) send(ctx context.Context, p proto.Packet) {
 	msg, err := p.Serialize(ctx, gzip.DefaultCompression)
 	errors.Check(err)
 
-	err = gw.bridge.WriteMessage(websocket.TextMessage, msg)
+	err = gw.bridge.WriteMessage(websocket.BinaryMessage, msg)
 	if err != nil {
 		logger.Warnf("Failed to transmit packet to bridge [%v]", err)
 	}
-	logger.Info(msg)
 }
 
 // handleHttp handles incoming http requests by forwarding them to the appropriate services.
