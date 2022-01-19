@@ -8,31 +8,32 @@ import (
 	"net/url"
 	"strings"
 
+	"github.com/gorilla/websocket"
+	"github.com/sirupsen/logrus"
+
 	"github.com/bcmmacro/bridging-go/internal/config"
 	"github.com/bcmmacro/bridging-go/internal/proto"
 	"github.com/bcmmacro/bridging-go/library/common"
 	"github.com/bcmmacro/bridging-go/library/errors"
 	"github.com/bcmmacro/bridging-go/library/log"
-	"github.com/gorilla/websocket"
-	"github.com/sirupsen/logrus"
 )
 
 type Gateway struct {
 	bridge *websocket.Conn
-	// wss    map[int64]*websocket.Conn
+	wss    map[string]*websocket.Conn
 }
 
 // Run starts the gateway and accept incoming requests via websockets.
 func (gw *Gateway) Run(conf *config.Config) {
-	bridge_netloc := conf.BridgeNetLoc
-	bridge_token := conf.BridgeToken
-	gw.connect(bridge_netloc, bridge_token)
+	bridgeNetloc := conf.BridgeNetLoc
+	bridgeToken := conf.BridgeToken
+	gw.connect(bridgeNetloc, bridgeToken)
 }
 
 // connect makes a persistant connection to bridge's websocket, to allow data to flow between private DC and outbound server.
-func (gw *Gateway) connect(bridge_netloc string, bridge_token string) {
-	bridgeURL := bridge_netloc + "/bridge"
-	wss, _, err := websocket.DefaultDialer.Dial(bridgeURL, http.Header{"bridging-token": []string{bridge_token}})
+func (gw *Gateway) connect(bridgeNetloc string, bridgeToken string) {
+	bridgeURL := bridgeNetloc + "/bridge"
+	wss, _, err := websocket.DefaultDialer.Dial(bridgeURL, http.Header{"bridging-token": []string{bridgeToken}})
 	if err != nil {
 		logrus.Fatal("Dial: ", err)
 	}
@@ -59,6 +60,8 @@ func (gw *Gateway) connect(bridge_netloc string, bridge_token string) {
 
 		if method == "http" {
 			go gw.handleHttp(ctx, corrID, args)
+		} else if method == "open_websocket" {
+			go gw.handleOpenWebsocket(ctx, corrID, args)
 		}
 	}
 }
@@ -76,11 +79,23 @@ func (gw *Gateway) send(ctx context.Context, p proto.Packet) {
 	}
 }
 
+// handleOpenWebsocket opens a single websocket connection per request with downstream services.
+func (gw *Gateway) handleOpenWebsocket(ctx context.Context, corrID string, args *proto.Args) {
+	logger := log.Ctx(ctx)
+	wsid := args.WSID
+	logger.Println(logger, wsid)
+}
+
 // handleHttp handles incoming http requests by forwarding them to the appropriate services.
 func (gw *Gateway) handleHttp(ctx context.Context, corrID string, args *proto.Args) {
 	logger := log.Ctx(ctx)
-	req := deserializeRequest(args)
-	logger.Printf("Build http Req [%+v]\n", req)
+	req, err := deserializeRequest(ctx, args)
+	if err != nil {
+		logger.Warn("Failed to deserialize incoming http request")
+		return
+	}
+
+	logger.Infof("Build http Req [%+v]\n", req)
 
 	client := http.Client{}
 	resp, err := client.Do(req)
@@ -90,9 +105,9 @@ func (gw *Gateway) handleHttp(ctx context.Context, corrID string, args *proto.Ar
 		args := proto.MakeHTTPErrprRespArgs(500)
 		p = createProtoPackage(corrID, "http_result", args)
 	} else {
-		logger.Printf("Recv http resp[%v]\n", resp)
+		logger.Infof("Recv http resp[%v]\n", resp)
 		p = sanitizeResponse(ctx, resp, corrID)
-		logger.Printf("Sanitize http resp[%v]\n", p)
+		logger.Infof("Sanitize http resp[%v]\n", p)
 	}
 	gw.send(ctx, p)
 }
@@ -124,26 +139,42 @@ func createProtoPackage(corrID string, method string, args *proto.Args) proto.Pa
 }
 
 // deserializeRequest converts Args to a http request.
-func deserializeRequest(args *proto.Args) *http.Request {
-	url := urlTransform(args)
+func deserializeRequest(ctx context.Context, args *proto.Args) (*http.Request, error) {
+	logger := log.Ctx(ctx)
+	url, err := urlTransform(args)
+	if err != nil {
+		logger.Warn("Failed to transform url to it's intended destination")
+		return nil, err
+	}
+
 	req, err := http.NewRequest(args.Method, url, bytes.NewReader(common.IntSliceToByteSlice(args.Body)))
-	errors.Check(err)
+	if err != nil {
+		logger.Warn("Failed to parse args into a http request obj")
+		return req, err
+	}
 
 	for k, v := range args.Headers {
 		req.Header.Add(k, v)
 	}
-	return req
+	return req, nil
 }
 
 // urlTransform replaces original url to bridging-base-url.
-func urlTransform(args *proto.Args) string {
+func urlTransform(args *proto.Args) (string, error) {
 	url, err := url.Parse(args.URL)
-	errors.Check(err)
+	if err != nil {
+		return "", err
+	}
 
 	for k, v := range args.Headers {
 		if strings.ToLower(k) == "bridging-base-url" {
 			url.Host = v
 		}
 	}
-	return url.String()
+	return url.String(), nil
+}
+
+// wsUrlTransform is the sibling function to urlTransform for websocket destination
+func wslUrlTransform(args *proto.Args) (string, error) {
+	return "", nil
 }
