@@ -40,6 +40,21 @@ func (args *Args) truncated() *Args {
 	}
 }
 
+type PacketMethod int
+
+const (
+	OPEN_WEBSOCKET_RESULT PacketMethod = iota
+	OPEN_WEBSOCKET
+	CLOSE_WEBSOCKET
+	WEBSOCKET_MSG
+	HTTP_RESULT
+	HTTP
+)
+
+func (pm PacketMethod) String() string {
+	return [...]string{"open_websocket_result", "open_websocket", "close_websocket", "websocket_msg", "http_result", "http"}[pm]
+}
+
 type Packet struct {
 	CorrID string `json:"corr_id"`
 	Method string `json:"method"` // desired operation: http, http_result, open_websocket etc.
@@ -82,11 +97,20 @@ func Deserialize(ctx context.Context, data []byte) (*Packet, error) {
 	return &p, nil
 }
 
-func (p *Packet) Serialize(ctx context.Context, level int) ([]byte, error) {
+func (p *Packet) SerializeJSON(ctx context.Context) ([]byte, error) {
 	logger := log.Ctx(ctx)
 	data, err := json.Marshal(p)
 	if err != nil {
 		logger.Warnf("failed to marshal packet error[%v]", err)
+		return nil, err
+	}
+	return data, nil
+}
+
+func (p *Packet) Serialize(ctx context.Context, level int) ([]byte, error) {
+	logger := log.Ctx(ctx)
+	data, err := p.SerializeJSON(ctx)
+	if err != nil {
 		return nil, err
 	}
 
