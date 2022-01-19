@@ -23,7 +23,7 @@ type Gateway struct {
 	ws     map[string]*websocket.Conn
 }
 
-// Run starts the gateway and accept incoming requests via websockets.
+// Run starts the gateway, connects to bridge before accepting incoming requests via websockets.
 func (gw *Gateway) Run(conf *config.Config) {
 	bridgeNetloc := conf.BridgeNetLoc
 	bridgeToken := conf.BridgeToken
@@ -54,19 +54,35 @@ func (gw *Gateway) connect(bridgeNetloc string, bridgeToken string) {
 
 		logger.Printf("Recv bridge msg: %+v\n", msg)
 
-		method := msg.Method
+		method, err := proto.MakePacketMethod(msg.Method)
+		if err != nil {
+			logger.Warnf("Invalid method passed down by bridge Err[%v]", err)
+		}
 		corrID := msg.CorrID
 		args := msg.Args
 
-		if method == proto.HTTP.String() {
+		switch method {
+		case proto.HTTP:
 			go gw.handleHttp(ctx, corrID, args)
-		} else if method == proto.OPEN_WEBSOCKET.String() {
+		case proto.OPEN_WEBSOCKET:
 			go gw.handleOpenWebsocket(ctx, corrID, args)
-		} else if method == proto.WEBSOCKET_MSG.String() {
+		case proto.WEBSOCKET_MSG:
 			conn, present := gw.ws[args.WSID]
 			if present {
 				send(ctx, conn, args.Msg)
 			}
+		case proto.CLOSE_WEBSOCKET:
+			conn, present := gw.ws[args.WSID]
+			if present {
+				err := conn.Close()
+				if err != nil {
+					logger.Warnf("Failed to close downstream websockets connection. Err[%v]", err)
+				}
+				delete(gw.ws, args.WSID)
+			}
+			gw.send(ctx, createProtoPackage(corrID, proto.CLOSE_WEBSOCKET_RESULT, &proto.Args{WSID: args.WSID}))
+		default:
+			logger.Warn("Unsupported method passed down by bridge method[%v]", msg.Method)
 		}
 	}
 }

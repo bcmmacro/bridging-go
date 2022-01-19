@@ -5,6 +5,7 @@ import (
 	"compress/gzip"
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io/ioutil"
 	"net/http"
@@ -45,14 +46,29 @@ type PacketMethod int
 const (
 	OPEN_WEBSOCKET_RESULT PacketMethod = iota
 	OPEN_WEBSOCKET
+	CLOSE_WEBSOCKET_RESULT
 	CLOSE_WEBSOCKET
 	WEBSOCKET_MSG
 	HTTP_RESULT
 	HTTP
 )
 
+func (pm PacketMethod) Values() [7]string {
+	return [...]string{"open_websocket_result", "open_websocket", "close_websocket_result", "close_websocket", "websocket_msg", "http_result", "http"}
+}
+
 func (pm PacketMethod) String() string {
-	return [...]string{"open_websocket_result", "open_websocket", "close_websocket", "websocket_msg", "http_result", "http"}[pm]
+	return pm.Values()[pm]
+}
+
+func MakePacketMethod(method string) (PacketMethod, error) {
+	pm := PacketMethod(0)
+	for i, j := range pm.Values() {
+		if method == j {
+			return PacketMethod(i), nil
+		}
+	}
+	return 0, errors.New("invalid packet method")
 }
 
 type Packet struct {
