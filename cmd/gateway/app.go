@@ -42,15 +42,14 @@ func (gw *Gateway) connect(bridge_netloc string, bridge_token string) {
 	gw.bridge = wss
 
 	for {
-		// TODO: read from header instead
 		_, wsMsg, err := wss.ReadMessage()
-		ctx, logger := log.WithField(context.Background(), "ReqID", common.RandomInt64())
+		ctx := context.Background()
 		if err != nil {
-			logger.Println("Read: ", err)
+			logrus.Println("Read: ", err)
 			return
 		}
-		msg, err := proto.Deserialize(ctx, wsMsg)
-		errors.Check(err)
+		msg, _ := proto.Deserialize(ctx, wsMsg)
+		ctx, logger := log.WithField(ctx, "ReqID", msg.CorrID)
 
 		logger.Printf("Recv bridge msg: %+v\n", msg)
 
@@ -62,10 +61,9 @@ func (gw *Gateway) connect(bridge_netloc string, bridge_token string) {
 			go gw.handleHttp(ctx, corrID, args)
 		}
 	}
-
 }
 
-// send transmits a packet from gateway to bridge
+// send transmits a packet from gateway to bridge.
 func (gw *Gateway) send(ctx context.Context, p proto.Packet) {
 	logger := log.Ctx(ctx)
 	logger.Printf("Send bridge msg[%+v]\n", p)
@@ -99,9 +97,9 @@ func (gw *Gateway) handleHttp(ctx context.Context, corrID string, args *proto.Ar
 	gw.send(ctx, p)
 }
 
+// sanitizeResponse removes unnecessary data from headers and parses response into a Packet.
 func sanitizeResponse(ctx context.Context, resp *http.Response, corrID string) proto.Packet {
 	logger := log.Ctx(ctx)
-	// Remove unnecessary data
 	for _, header := range []string{"Content-Encoding", "Content-Length"} {
 		if resp.Header.Get(header) != "" {
 			resp.Header.Del(header)
@@ -116,7 +114,7 @@ func sanitizeResponse(ctx context.Context, resp *http.Response, corrID string) p
 	return createProtoPackage(corrID, "http_result", args)
 }
 
-// createProtoPackage creates a package struct which is sent over websockets to bridge
+// createProtoPackage creates a package struct which is sent over websockets to bridge.
 func createProtoPackage(corrID string, method string, args *proto.Args) proto.Packet {
 	var p proto.Packet
 	p.CorrID = corrID
