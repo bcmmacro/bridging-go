@@ -141,3 +141,33 @@ func MakeHTTPReqArgs(ctx context.Context, r *http.Request) (*Args, error) {
 	}
 	return &args, nil
 }
+
+func MakeHTTPRespArgs(ctx context.Context, r *http.Response) (*Args, error) {
+	logger := log.Ctx(ctx)
+	var args Args
+
+	args.Headers = make(map[string]string)
+	for k, v := range r.Header {
+		for _, vv := range v {
+			args.Headers[k] = vv
+		}
+	}
+
+	args.StatusCode = int64(r.StatusCode)
+
+	if body, err := ioutil.ReadAll(r.Body); err != nil {
+		logger.Warnf("failed to read body error[%v]", err)
+		return nil, err
+	} else {
+		args.Content = string(body)
+	}
+	return &args, nil
+}
+
+func MakeHTTPErrprRespArgs(statusCode int) *Args {
+	var args Args
+	args.Headers = nil
+	args.StatusCode = int64(statusCode)
+	args.Content = ""
+	return &args
+}
