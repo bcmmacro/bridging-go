@@ -14,7 +14,6 @@ import (
 
 	"github.com/bcmmacro/bridging-go/internal/proto"
 	"github.com/bcmmacro/bridging-go/library/common"
-	"github.com/bcmmacro/bridging-go/library/errors"
 	errors2 "github.com/bcmmacro/bridging-go/library/errors"
 	http2 "github.com/bcmmacro/bridging-go/library/http"
 	"github.com/bcmmacro/bridging-go/library/log"
@@ -47,7 +46,7 @@ func NewForwarder() *Forwarder {
 
 func (f *Forwarder) ForwardHTTP(ctx context.Context, w http.ResponseWriter, r *http.Request) {
 	if f.bridge == nil {
-		http2.WriteErr(w, r, errors.ErrInternal)
+		http2.WriteErr(w, r, errors2.ErrInternal)
 		return
 	}
 
@@ -62,7 +61,11 @@ func (f *Forwarder) ForwardHTTP(ctx context.Context, w http.ResponseWriter, r *h
 		return
 	}
 
-	resp, err := f.req(ctx, "http", args)
+	resp, err := f.req(ctx, proto.HTTP, args)
+	if err != nil {
+		http2.WriteErr(w, r, errors2.ErrInternal)
+		return
+	}
 
 	w.WriteHeader(int(resp.StatusCode))
 	for k, v := range resp.Headers {
@@ -86,7 +89,7 @@ func (f *Forwarder) ForwardOpenWebsocket(ctx context.Context, r *http.Request, w
 		return "", err
 	}
 	args.WSID = wsID
-	resp, err := f.req(ctx, "open_websocket", args)
+	resp, err := f.req(ctx, proto.OPEN_WEBSOCKET, args)
 	if err != nil {
 		return "", err
 	}
@@ -108,7 +111,7 @@ func (f *Forwarder) ForwardWebsocketMsg(ctx context.Context, wsID string, ws *we
 	_, corrID := common.CorrIDCtx(ctx)
 	p := proto.Packet{
 		CorrID: corrID,
-		Method: "websocket_msg",
+		Method: proto.WEBSOCKET_MSG,
 		Args:   &proto.Args{WSID: wsID, Msg: string(msg)}}
 	return f.send(ctx, &p)
 }
@@ -125,7 +128,7 @@ func (f *Forwarder) ForwardCloseWebsocket(ctx context.Context, wsID string, ws *
 	}
 	f.mutex.Unlock()
 
-	_, err := f.req(ctx, "close_websocket", &proto.Args{WSID: wsID})
+	_, err := f.req(ctx, proto.CLOSE_WEBSOCKET, &proto.Args{WSID: wsID})
 	f.mutex.Lock()
 	delete(f.wss, wsID)
 	f.mutex.Unlock()
@@ -167,7 +170,7 @@ func (f *Forwarder) Serve(ctx context.Context, bridgingToken string, ws *websock
 		// use the CorrID from the message
 		_, logger2 := common.CorrIDCtxLogger(common.CtxWithCorrID(ctx, packet.CorrID))
 
-		if packet.Method == "close_websocket" {
+		if packet.Method == proto.CLOSE_WEBSOCKET {
 			logger2.Infof("recv [%v]", packet)
 			wsID := packet.Args.WSID
 			f.mutex.Lock()
@@ -180,7 +183,7 @@ func (f *Forwarder) Serve(ctx context.Context, bridgingToken string, ws *websock
 				ws.WriteControl(websocket.CloseMessage, websocket.FormatCloseMessage(websocket.CloseGoingAway, ""), time.Now().Add(time.Second*3))
 				ws.Close()
 			}
-		} else if packet.Method == "websocket_msg" {
+		} else if packet.Method == proto.WEBSOCKET_MSG {
 			logger2.Debugf("recv [%v]", packet)
 			wsID := packet.Args.WSID
 			f.mutex.Lock()
@@ -197,6 +200,7 @@ func (f *Forwarder) Serve(ctx context.Context, bridgingToken string, ws *websock
 			f.mutex.Unlock()
 			if ok {
 				ch <- packet.Args
+				close(ch)
 			}
 		}
 	}
@@ -205,7 +209,7 @@ func (f *Forwarder) Serve(ctx context.Context, bridgingToken string, ws *websock
 	f.bridge = nil
 }
 
-func (f *Forwarder) req(ctx context.Context, method string, args *proto.Args) (*proto.Args, error) {
+func (f *Forwarder) req(ctx context.Context, method proto.PacketMethod, args *proto.Args) (*proto.Args, error) {
 	_, corrID := common.CorrIDCtx(ctx)
 	c := make(chan *proto.Args)
 

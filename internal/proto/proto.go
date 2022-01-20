@@ -88,9 +88,9 @@ const (
 )
 
 type Packet struct {
-	CorrID string `json:"corr_id"`
-	Method string `json:"method"` // desired operation: http, http_result, open_websocket etc.
-	Args   *Args  `json:"args"`
+	CorrID string       `json:"corr_id"`
+	Method PacketMethod `json:"method"` // desired operation: http, http_result, open_websocket etc.
+	Args   *Args        `json:"args"`
 }
 
 func (p *Packet) String() string {

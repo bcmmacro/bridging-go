@@ -220,7 +220,7 @@ func sanitizeResponse(ctx context.Context, resp *http.Response, corrID string) *
 func createProtoPackage(corrID string, method proto.PacketMethod, args *proto.Args) *proto.Packet {
 	var p proto.Packet
 	p.CorrID = corrID
-	p.Method = string(method)
+	p.Method = method
 	p.Args = args
 	return &p
 }
