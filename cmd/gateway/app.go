@@ -107,7 +107,7 @@ func (gw *Gateway) send(ctx context.Context, p *proto.Packet) {
 // else if data is of type Packet, it is converted to json, then gzipped before sending.
 func send(ctx context.Context, conn *websocket.Conn, data interface{}) {
 	logger := log.Ctx(ctx)
-	logger.Infof("Send msg[%s]\n", data)
+	logger.Debugf("Send msg[%s]\n", data)
 
 	switch p := data.(type) {
 	case *proto.Packet:
@@ -137,11 +137,15 @@ func (gw *Gateway) handleOpenWebsocket(ctx context.Context, corrID string, args 
 	url, err := args.WsUrlTransform()
 	if err != nil {
 		logger.Warn("Failed to transform url to it's intended destination")
+		p := createProtoPackage(corrID, proto.OPEN_WEBSOCKET_RESULT, &proto.Args{WSID: wsid, Exception: err.Error()})
+		gw.send(ctx, p)
 		return
 	}
 	ws, _, err := websocket.DefaultDialer.Dial(url, nil)
 	if err != nil {
 		logger.Warnf("Failed to open websockets connection with destination[%v]", url)
+		p := createProtoPackage(corrID, proto.OPEN_WEBSOCKET_RESULT, &proto.Args{WSID: wsid, Exception: err.Error()})
+		gw.send(ctx, p)
 		return
 	}
 	defer ws.Close()
@@ -159,7 +163,7 @@ func (gw *Gateway) handleOpenWebsocket(ctx context.Context, corrID string, args 
 		_, wsMsg, err := ws.ReadMessage()
 		if err != nil {
 			// Inform bridge that downstream websockets is disconnected
-			logger.Warnf("Invalid message received [%v]", err)
+			logger.Warnf("Invalid message received [%v] Closing websockets connection ID [%v]", err, wsid)
 			p := createProtoPackage(corrID, proto.CLOSE_WEBSOCKET, &proto.Args{WSID: wsid})
 			gw.send(ctx, p)
 
