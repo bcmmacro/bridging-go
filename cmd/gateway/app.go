@@ -73,21 +73,23 @@ func (gw *Gateway) connect(bridgeNetloc string, bridgeToken string) {
 		case proto.OPEN_WEBSOCKET:
 			go gw.handleOpenWebsocket(ctx, corrID, args)
 		case proto.WEBSOCKET_MSG:
+			gw.mutex.Lock()
 			conn, present := gw.ws[args.WSID]
 			if present {
 				send(ctx, conn, args.Msg)
 			}
+			gw.mutex.Unlock()
 		case proto.CLOSE_WEBSOCKET:
+			gw.mutex.Lock()
 			conn, present := gw.ws[args.WSID]
 			if present {
 				err := conn.Close()
 				if err != nil {
 					logger.Warnf("Failed to close downstream websockets connection. Err[%v]", err)
 				}
-				gw.mutex.Lock()
 				delete(gw.ws, args.WSID)
-				gw.mutex.Unlock()
 			}
+			gw.mutex.Unlock()
 			gw.send(ctx, createProtoPackage(corrID, proto.CLOSE_WEBSOCKET_RESULT, &proto.Args{WSID: args.WSID}))
 		default:
 			logger.Warnf("Unsupported method passed down by bridge method[%v]", msg.Method)
