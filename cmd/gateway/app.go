@@ -4,8 +4,8 @@ import (
 	"bytes"
 	"compress/gzip"
 	"context"
-	"encoding/json"
 	"net/http"
+	"sync"
 
 	"github.com/gorilla/websocket"
 	"github.com/sirupsen/logrus"
@@ -19,6 +19,7 @@ import (
 type Gateway struct {
 	bridge *websocket.Conn
 	ws     map[string]*websocket.Conn
+	mutex  sync.Mutex
 }
 
 func NewGateway() *Gateway {
@@ -51,13 +52,16 @@ func (gw *Gateway) connect(bridgeNetloc string, bridgeToken string) {
 		_, wsMsg, err := wss.ReadMessage()
 		ctx := context.Background()
 		if err != nil {
-			logrus.Println("Read: ", err)
-			return
+			logrus.Errorln("Read: ", err)
+			continue
 		}
-		msg, _ := proto.Deserialize(ctx, wsMsg)
+		msg, err := proto.Deserialize(ctx, wsMsg)
+		if err != nil {
+			continue
+		}
 		ctx, logger := log.WithField(ctx, "ReqID", msg.CorrID)
 
-		logger.Printf("Recv bridge msg: %+v\n", msg)
+		logger.Infof("Recv bridge msg: %s\n", msg)
 
 		method, err := proto.MakePacketMethod(msg.Method)
 		if err != nil {
@@ -83,17 +87,19 @@ func (gw *Gateway) connect(bridgeNetloc string, bridgeToken string) {
 				if err != nil {
 					logger.Warnf("Failed to close downstream websockets connection. Err[%v]", err)
 				}
+				gw.mutex.Lock()
 				delete(gw.ws, args.WSID)
+				gw.mutex.Unlock()
 			}
 			gw.send(ctx, createProtoPackage(corrID, proto.CLOSE_WEBSOCKET_RESULT, &proto.Args{WSID: args.WSID}))
 		default:
-			logger.Warn("Unsupported method passed down by bridge method[%v]", msg.Method)
+			logger.Warnf("Unsupported method passed down by bridge method[%v]", msg.Method)
 		}
 	}
 }
 
 // send by gateway transmits a packet from gateway to bridge.
-func (gw *Gateway) send(ctx context.Context, p proto.Packet) {
+func (gw *Gateway) send(ctx context.Context, p *proto.Packet) {
 	send(ctx, gw.bridge, p)
 }
 
@@ -102,20 +108,25 @@ func (gw *Gateway) send(ctx context.Context, p proto.Packet) {
 // else if data is of type Packet, it is converted to json, then gzipped before sending.
 func send(ctx context.Context, conn *websocket.Conn, data interface{}) {
 	logger := log.Ctx(ctx)
-	logger.Infof("Send bridge msg[%+v]\n", data)
+	logger.Infof("Send msg[%s]\n", data)
 
 	switch p := data.(type) {
-	case proto.Packet:
-		msg, _ := p.Serialize(ctx, gzip.DefaultCompression)
-		err := conn.WriteMessage(websocket.BinaryMessage, msg)
+	case *proto.Packet:
+		msg, err := p.Serialize(ctx, gzip.DefaultCompression)
+		if err != nil {
+			return
+		}
+		err = conn.WriteMessage(websocket.BinaryMessage, msg)
 		if err != nil {
 			logger.Warnf("Failed to transmit packet to bridge")
 		}
 	case string:
-		err := conn.WriteJSON(json.RawMessage(p))
+		err := conn.WriteMessage(websocket.TextMessage, []byte(p))
 		if err != nil {
 			logger.Warnf("Failed to forward websocket message to downstream service")
 		}
+	default:
+		logger.Warnf("Invalid data passed to send function")
 	}
 }
 
@@ -138,7 +149,10 @@ func (gw *Gateway) handleOpenWebsocket(ctx context.Context, corrID string, args 
 	logger.Infof("Connected ws url[%v]\n", url)
 
 	// Store downstream websocket connections in Gateway
+	gw.mutex.Lock()
 	gw.ws[wsid] = ws
+	gw.mutex.Unlock()
+
 	p := createProtoPackage(corrID, proto.OPEN_WEBSOCKET_RESULT, &proto.Args{WSID: wsid})
 	gw.send(ctx, p)
 
@@ -149,6 +163,10 @@ func (gw *Gateway) handleOpenWebsocket(ctx context.Context, corrID string, args 
 			logger.Warnf("Invalid message received [%v]", err)
 			p := createProtoPackage(corrID, proto.CLOSE_WEBSOCKET, &proto.Args{WSID: wsid})
 			gw.send(ctx, p)
+
+			gw.mutex.Lock()
+			delete(gw.ws, wsid)
+			gw.mutex.Unlock()
 			break
 		}
 		// Forward downstream websockets message to bridge
@@ -171,7 +189,7 @@ func (gw *Gateway) handleHttp(ctx context.Context, corrID string, args *proto.Ar
 
 	client := http.Client{}
 	resp, err := client.Do(req)
-	var p proto.Packet
+	var p *proto.Packet
 	if err != nil {
 		logger.Warningln("Failed to get a response from http req[%v]", err)
 		args := proto.MakeHTTPErrprRespArgs(500)
@@ -185,7 +203,7 @@ func (gw *Gateway) handleHttp(ctx context.Context, corrID string, args *proto.Ar
 }
 
 // sanitizeResponse removes unnecessary data from headers and parses response into a Packet.
-func sanitizeResponse(ctx context.Context, resp *http.Response, corrID string) proto.Packet {
+func sanitizeResponse(ctx context.Context, resp *http.Response, corrID string) *proto.Packet {
 	logger := log.Ctx(ctx)
 	for _, header := range []string{"Content-Encoding", "Content-Length"} {
 		if resp.Header.Get(header) != "" {
@@ -202,12 +220,12 @@ func sanitizeResponse(ctx context.Context, resp *http.Response, corrID string) p
 }
 
 // createProtoPackage creates a package struct which is sent over websockets to bridge.
-func createProtoPackage(corrID string, method proto.PacketMethod, args *proto.Args) proto.Packet {
+func createProtoPackage(corrID string, method proto.PacketMethod, args *proto.Args) *proto.Packet {
 	var p proto.Packet
 	p.CorrID = corrID
 	p.Method = method.String()
 	p.Args = args
-	return p
+	return &p
 }
 
 // deserializeRequest converts Args to a http request.
