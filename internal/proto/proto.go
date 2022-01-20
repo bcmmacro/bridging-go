@@ -5,7 +5,6 @@ import (
 	"compress/gzip"
 	"context"
 	"encoding/json"
-	"errors"
 	"fmt"
 	"io/ioutil"
 	"net/http"
@@ -76,35 +75,17 @@ func (args *Args) WsUrlTransform() (string, error) {
 	return url.String(), nil
 }
 
-type PacketMethod int
+type PacketMethod string
 
 const (
-	OPEN_WEBSOCKET_RESULT PacketMethod = iota
-	OPEN_WEBSOCKET
-	CLOSE_WEBSOCKET_RESULT
-	CLOSE_WEBSOCKET
-	WEBSOCKET_MSG
-	HTTP_RESULT
-	HTTP
+	OPEN_WEBSOCKET_RESULT  PacketMethod = "open_websocket_result"
+	OPEN_WEBSOCKET         PacketMethod = "open_websocket"
+	CLOSE_WEBSOCKET_RESULT PacketMethod = "close_websocket_result"
+	CLOSE_WEBSOCKET        PacketMethod = "close_websocket"
+	WEBSOCKET_MSG          PacketMethod = "websocket_msg"
+	HTTP_RESULT            PacketMethod = "http_result"
+	HTTP                   PacketMethod = "http"
 )
-
-func (pm PacketMethod) Values() [7]string {
-	return [...]string{"open_websocket_result", "open_websocket", "close_websocket_result", "close_websocket", "websocket_msg", "http_result", "http"}
-}
-
-func (pm PacketMethod) String() string {
-	return pm.Values()[pm]
-}
-
-func MakePacketMethod(method string) (PacketMethod, error) {
-	pm := PacketMethod(0)
-	for i, j := range pm.Values() {
-		if method == j {
-			return PacketMethod(i), nil
-		}
-	}
-	return 0, errors.New("invalid packet method")
-}
 
 type Packet struct {
 	CorrID string `json:"corr_id"`

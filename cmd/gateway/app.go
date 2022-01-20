@@ -63,10 +63,7 @@ func (gw *Gateway) connect(bridgeNetloc string, bridgeToken string) {
 
 		logger.Infof("Recv bridge msg: %s\n", msg)
 
-		method, err := proto.MakePacketMethod(msg.Method)
-		if err != nil {
-			logger.Warnf("Invalid method passed down by bridge Err[%v]", err)
-		}
+		method := proto.PacketMethod(msg.Method)
 		corrID := msg.CorrID
 		args := msg.Args
 
@@ -223,7 +220,7 @@ func sanitizeResponse(ctx context.Context, resp *http.Response, corrID string) *
 func createProtoPackage(corrID string, method proto.PacketMethod, args *proto.Args) *proto.Packet {
 	var p proto.Packet
 	p.CorrID = corrID
-	p.Method = method.String()
+	p.Method = string(method)
 	p.Args = args
 	return &p
 }
