@@ -47,7 +47,7 @@ func (gw *Gateway) Run(conf *config.Config) {
 	go gw.flush()
 	for {
 		gw.connect(bridgeNetloc, bridgeToken)
-		time.Sleep(60 * time.Second)
+		time.Sleep(30 * time.Second)
 	}
 }
 
@@ -77,7 +77,7 @@ func (gw *Gateway) connect(bridgeNetloc string, bridgeToken string) {
 		ctx := context.Background()
 		if err != nil {
 			logrus.Errorln("Read: ", err)
-			continue
+			break
 		}
 		msg, err := proto.Deserialize(ctx, wsMsg)
 		if err != nil {
