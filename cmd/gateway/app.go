@@ -5,6 +5,7 @@ import (
 	"compress/gzip"
 	"context"
 	"net/http"
+	"net/url"
 	"sync"
 
 	"github.com/gorilla/websocket"
@@ -17,15 +18,17 @@ import (
 )
 
 type Gateway struct {
-	bridge *websocket.Conn
-	ws     map[string]*websocket.Conn
-	mutex  sync.Mutex
+	bridge       *websocket.Conn
+	ws           map[string]*websocket.Conn
+	whitelistMap *config.WhitelistMap
+	mutex        sync.Mutex
 }
 
-func NewGateway() *Gateway {
+func NewGateway(whitelistMap *config.WhitelistMap) *Gateway {
 	return &Gateway{
-		bridge: nil,
-		ws:     map[string]*websocket.Conn{},
+		bridge:       nil,
+		ws:           map[string]*websocket.Conn{},
+		whitelistMap: whitelistMap,
 	}
 }
 
@@ -141,15 +144,22 @@ func (gw *Gateway) handleOpenWebsocket(ctx context.Context, corrID string, args 
 		gw.send(ctx, p)
 		return
 	}
-	ws, _, err := websocket.DefaultDialer.Dial(url, nil)
+
+	// Check if downstream route is present in firewall
+	err = gw.firewall(ctx, "websocket", url)
 	if err != nil {
-		logger.Warnf("Failed to open websockets connection with destination[%v]", url)
+		return
+	}
+
+	ws, _, err := websocket.DefaultDialer.Dial(url.String(), nil)
+	if err != nil {
+		logger.Warnf("Failed to open websockets connection with destination[%v]", url.String())
 		p := createProtoPackage(corrID, proto.OPEN_WEBSOCKET_RESULT, &proto.Args{WSID: wsid, Exception: err.Error()})
 		gw.send(ctx, p)
 		return
 	}
 	defer ws.Close()
-	logger.Infof("Connected ws url[%v]\n", url)
+	logger.Infof("Connected ws url[%v]\n", url.String())
 
 	// Store downstream websocket connections in Gateway
 	gw.mutex.Lock()
@@ -179,12 +189,22 @@ func (gw *Gateway) handleOpenWebsocket(ctx context.Context, corrID string, args 
 	}
 }
 
+func (gw *Gateway) firewall(ctx context.Context, method string, url *url.URL) error {
+	return gw.whitelistMap.Check(ctx, method, url)
+}
+
 // handleHttp handles incoming http requests by forwarding them to the appropriate services.
 func (gw *Gateway) handleHttp(ctx context.Context, corrID string, args *proto.Args) {
 	logger := log.Ctx(ctx)
 	req, err := deserializeRequest(ctx, args)
 	if err != nil {
 		logger.Warn("Failed to deserialize incoming http request")
+		return
+	}
+
+	// Check if downstream route is present in firewall
+	err = gw.firewall(ctx, req.Method, req.URL)
+	if err != nil {
 		return
 	}
 

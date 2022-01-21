@@ -58,10 +58,10 @@ func (args *Args) UrlTransform() (string, error) {
 }
 
 // wsUrlTransform is the sibling function to urlTransform for websocket destination.
-func (args *Args) WsUrlTransform() (string, error) {
+func (args *Args) WsUrlTransform() (*url.URL, error) {
 	url, err := url.Parse(args.URL)
 	if err != nil {
-		return "", err
+		return nil, err
 	}
 
 	for k, v := range url.Query() {
@@ -72,7 +72,7 @@ func (args *Args) WsUrlTransform() (string, error) {
 			url.RawQuery = u.Encode()
 		}
 	}
-	return url.String(), nil
+	return url, nil
 }
 
 type PacketMethod string
