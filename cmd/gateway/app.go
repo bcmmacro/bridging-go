@@ -46,8 +46,9 @@ func (gw *Gateway) Run(conf *config.Config) {
 	bridgeToken := conf.BridgeToken
 	go gw.flush()
 	for {
-		gw.connect(bridgeNetloc, bridgeToken)
-		time.Sleep(30 * time.Second)
+		retry := 30
+		gw.connect(bridgeNetloc, bridgeToken, retry)
+		time.Sleep(time.Duration(retry) * time.Second)
 	}
 }
 
@@ -60,14 +61,17 @@ func (gw *Gateway) flush() {
 }
 
 // connect makes a persistant connection to bridge's websocket, to allow data to flow between private DC and outbound server.
-func (gw *Gateway) connect(bridgeNetloc string, bridgeToken string) {
+func (gw *Gateway) connect(bridgeNetloc string, bridgeToken string, retry int) {
 	bridgeURL := bridgeNetloc + "/bridge"
 	wss, _, err := websocket.DefaultDialer.Dial(bridgeURL, http.Header{"bridging-token": []string{bridgeToken}})
 	if err != nil {
-		logrus.Fatal("Dial: ", err)
+		// Connection to bridge fail
+		logrus.Errorf("Dial: %v. Retrying in %v seconds", err, retry)
 		return
 	}
 	defer func() {
+		// Handle bridge disconnect
+		logrus.Warnf("Disconnected bridge websocket [%v]", bridgeURL)
 		for _, v := range gw.ws {
 			v.Close()
 		}
@@ -78,6 +82,7 @@ func (gw *Gateway) connect(bridgeNetloc string, bridgeToken string) {
 	gw.bridge = wss
 
 	for {
+		// Incoming message from bridge
 		_, wsMsg, err := wss.ReadMessage()
 		ctx := context.Background()
 		if err != nil {
@@ -90,7 +95,7 @@ func (gw *Gateway) connect(bridgeNetloc string, bridgeToken string) {
 		}
 		ctx, logger := log.WithField(ctx, "ReqID", msg.CorrID)
 
-		logger.Infof("Recv bridge msg: %s\n", msg)
+		logger.Infof("Recv bridge msg: %s", msg)
 
 		method := proto.PacketMethod(msg.Method)
 		corrID := msg.CorrID
@@ -136,7 +141,7 @@ func (gw *Gateway) send(ctx context.Context, p *proto.Packet) {
 // else if data is of type Packet, it is converted to json, then gzipped before sending.
 func send(ctx context.Context, conn *websocket.Conn, data interface{}) {
 	logger := log.Ctx(ctx)
-	logger.Debugf("Send msg[%s]\n", data)
+	logger.Debugf("Send msg[%s]", data)
 
 	switch p := data.(type) {
 	case *proto.Packet:
@@ -165,7 +170,7 @@ func (gw *Gateway) handleOpenWebsocket(ctx context.Context, corrID string, args 
 
 	url, err := args.WsUrlTransform()
 	if err != nil {
-		logger.Warn("Failed to transform url to it's intended destination")
+		logger.Warnf("Failed to transform url to it's intended destination")
 		gw.wsChan <- wsChanItem{ctx: ctx, packet: createProtoPackage(corrID, proto.OPEN_WEBSOCKET_RESULT, &proto.Args{WSID: wsid, Exception: err.Error()})}
 		return
 	}
@@ -190,7 +195,8 @@ func (gw *Gateway) handleOpenWebsocket(ctx context.Context, corrID string, args 
 	gw.mutex.Unlock()
 
 	defer func() {
-		logger.Infof("Disconnected websocket [%v]", url.String())
+		// Handle when downstream websocket disconnects
+		logger.Infof("Disconnected downstream websocket [%v]", url.String())
 		ws.Close()
 		gw.mutex.Lock()
 		delete(gw.ws, wsid)
@@ -205,10 +211,6 @@ func (gw *Gateway) handleOpenWebsocket(ctx context.Context, corrID string, args 
 			// Inform bridge that downstream websockets is disconnected
 			logger.Warnf("Invalid message received [%v] Closing websockets connection ID [%v]", err, wsid)
 			gw.wsChan <- wsChanItem{ctx: ctx, packet: createProtoPackage(corrID, proto.CLOSE_WEBSOCKET, &proto.Args{WSID: wsid})}
-
-			gw.mutex.Lock()
-			delete(gw.ws, wsid)
-			gw.mutex.Unlock()
 			break
 		}
 		// Forward downstream websockets message to bridge
@@ -242,7 +244,7 @@ func (gw *Gateway) handleHttp(ctx context.Context, corrID string, args *proto.Ar
 	resp, err := client.Do(req)
 	var p *proto.Packet
 	if err != nil {
-		logger.Warningln("Failed to get a response from http req[%v]", err)
+		logger.Warnf("Failed to get a response from http req[%v]", err)
 		args := proto.MakeHTTPErrprRespArgs(500)
 		p = createProtoPackage(corrID, proto.HTTP_RESULT, args)
 	} else {
@@ -266,7 +268,7 @@ func sanitizeResponse(ctx context.Context, resp *http.Response, corrID string) *
 
 	args, err := proto.MakeHTTPRespArgs(ctx, resp)
 	if err != nil {
-		logger.Warnf("Failed to create http resp args [%v]\n", err)
+		logger.Warnf("Failed to create http resp args [%v]", err)
 		args = proto.MakeHTTPErrprRespArgs(400)
 	}
 	return createProtoPackage(corrID, proto.HTTP_RESULT, args)
