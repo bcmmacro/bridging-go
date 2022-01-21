@@ -7,6 +7,7 @@ import (
 	"net/http"
 	"net/url"
 	"sync"
+	"time"
 
 	"github.com/gorilla/websocket"
 	"github.com/sirupsen/logrus"
@@ -44,7 +45,10 @@ func (gw *Gateway) Run(conf *config.Config) {
 	bridgeNetloc := conf.BridgeNetLoc
 	bridgeToken := conf.BridgeToken
 	go gw.flush()
-	gw.connect(bridgeNetloc, bridgeToken)
+	for {
+		gw.connect(bridgeNetloc, bridgeToken)
+		time.Sleep(60 * time.Second)
+	}
 }
 
 // flush will flush the channel by sending the messages to bridge.
@@ -60,7 +64,8 @@ func (gw *Gateway) connect(bridgeNetloc string, bridgeToken string) {
 	bridgeURL := bridgeNetloc + "/bridge"
 	wss, _, err := websocket.DefaultDialer.Dial(bridgeURL, http.Header{"bridging-token": []string{bridgeToken}})
 	if err != nil {
-		logrus.Fatal("Dial: ", err) // TODO: implement a retry instead of panicking
+		logrus.Fatal("Dial: ", err)
+		return
 	}
 	defer wss.Close()
 
