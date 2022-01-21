@@ -208,7 +208,7 @@ func (gw *Gateway) handleHttp(ctx context.Context, corrID string, args *proto.Ar
 		return
 	}
 
-	logger.Infof("Build http Req [%+v]\n", req)
+	logger.Debugf("Build http Req [%+v]\n", req)
 
 	client := http.Client{}
 	resp, err := client.Do(req)
@@ -218,9 +218,8 @@ func (gw *Gateway) handleHttp(ctx context.Context, corrID string, args *proto.Ar
 		args := proto.MakeHTTPErrprRespArgs(500)
 		p = createProtoPackage(corrID, proto.HTTP_RESULT, args)
 	} else {
-		logger.Infof("Recv http resp[%v]\n", resp)
+		logger.Debugf("Recv http resp[%v]\n", resp)
 		p = sanitizeResponse(ctx, resp, corrID)
-		logger.Infof("Sanitize http resp[%v]\n", p)
 	}
 	gw.send(ctx, p)
 }
