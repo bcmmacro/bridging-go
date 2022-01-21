@@ -190,6 +190,7 @@ func (gw *Gateway) handleOpenWebsocket(ctx context.Context, corrID string, args 
 	gw.mutex.Unlock()
 
 	defer func() {
+		logger.Infof("Disconnected websocket [%v]", url.String())
 		ws.Close()
 		gw.mutex.Lock()
 		delete(gw.ws, wsid)
@@ -248,7 +249,10 @@ func (gw *Gateway) handleHttp(ctx context.Context, corrID string, args *proto.Ar
 		logger.Debugf("Recv http resp[%v]\n", resp)
 		p = sanitizeResponse(ctx, resp, corrID)
 	}
-	gw.send(ctx, p)
+	gw.wsChan <- wsChanItem{
+		ctx:    ctx,
+		packet: p,
+	}
 }
 
 // sanitizeResponse removes unnecessary data from headers and parses response into a Packet.
