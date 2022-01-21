@@ -31,6 +31,6 @@ func main() {
 	if portEnv := os.Getenv("PORT"); portEnv != "" {
 		port = fmt.Sprintf(":%s", os.Getenv("PORT"))
 	}
-	logrus.Infof("listenging on port %s", port)
+	logrus.Infof("listening on port %s", port)
 	logrus.Fatal(http.ListenAndServe(port, c.Handler(handler)))
 }

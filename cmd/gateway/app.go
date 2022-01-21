@@ -47,7 +47,7 @@ func (gw *Gateway) Run(conf *config.Config) {
 	gw.connect(bridgeNetloc, bridgeToken)
 }
 
-// flush is will clear the buffer in wsChan by sending the messages to bridge.
+// flush will flush the channel by sending the messages to bridge.
 func (gw *Gateway) flush() {
 	for {
 		buf := <-gw.wsChan
