@@ -67,7 +67,12 @@ func (gw *Gateway) connect(bridgeNetloc string, bridgeToken string) {
 		logrus.Fatal("Dial: ", err)
 		return
 	}
-	defer wss.Close()
+	defer func() {
+		for _, v := range gw.ws {
+			v.Close()
+		}
+		wss.Close()
+	}()
 
 	logrus.Info("Connected to bridge")
 	gw.bridge = wss
@@ -177,13 +182,19 @@ func (gw *Gateway) handleOpenWebsocket(ctx context.Context, corrID string, args 
 		gw.wsChan <- wsChanItem{ctx: ctx, packet: createProtoPackage(corrID, proto.OPEN_WEBSOCKET_RESULT, &proto.Args{WSID: wsid, Exception: err.Error()})}
 		return
 	}
-	defer ws.Close()
 	logger.Infof("Connected ws url[%v]\n", url.String())
 
 	// Store downstream websocket connections in Gateway
 	gw.mutex.Lock()
 	gw.ws[wsid] = ws
 	gw.mutex.Unlock()
+
+	defer func() {
+		ws.Close()
+		gw.mutex.Lock()
+		delete(gw.ws, wsid)
+		gw.mutex.Unlock()
+	}()
 
 	gw.wsChan <- wsChanItem{ctx: ctx, packet: createProtoPackage(corrID, proto.OPEN_WEBSOCKET_RESULT, &proto.Args{WSID: wsid})}
 
