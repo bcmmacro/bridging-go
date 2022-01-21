@@ -22,6 +22,12 @@ type Gateway struct {
 	ws           map[string]*websocket.Conn
 	whitelistMap *config.WhitelistMap
 	mutex        sync.Mutex
+	wsChan       chan wsChanItem
+}
+
+type wsChanItem struct {
+	packet *proto.Packet
+	ctx    context.Context
 }
 
 func NewGateway(whitelistMap *config.WhitelistMap) *Gateway {
@@ -29,6 +35,7 @@ func NewGateway(whitelistMap *config.WhitelistMap) *Gateway {
 		bridge:       nil,
 		ws:           map[string]*websocket.Conn{},
 		whitelistMap: whitelistMap,
+		wsChan:       make(chan wsChanItem, 64), // channel to publish msg from gateway to bridge
 	}
 }
 
@@ -36,7 +43,16 @@ func NewGateway(whitelistMap *config.WhitelistMap) *Gateway {
 func (gw *Gateway) Run(conf *config.Config) {
 	bridgeNetloc := conf.BridgeNetLoc
 	bridgeToken := conf.BridgeToken
+	go gw.flush()
 	gw.connect(bridgeNetloc, bridgeToken)
+}
+
+// flush is will clear the buffer in wsChan by sending the messages to bridge.
+func (gw *Gateway) flush() {
+	for {
+		buf := <-gw.wsChan
+		gw.send(buf.ctx, buf.packet)
+	}
 }
 
 // connect makes a persistant connection to bridge's websocket, to allow data to flow between private DC and outbound server.
@@ -93,7 +109,7 @@ func (gw *Gateway) connect(bridgeNetloc string, bridgeToken string) {
 				delete(gw.ws, args.WSID)
 			}
 			gw.mutex.Unlock()
-			gw.send(ctx, createProtoPackage(corrID, proto.CLOSE_WEBSOCKET_RESULT, &proto.Args{WSID: args.WSID}))
+			gw.wsChan <- wsChanItem{packet: createProtoPackage(corrID, proto.CLOSE_WEBSOCKET_RESULT, &proto.Args{WSID: args.WSID}), ctx: ctx}
 		default:
 			logger.Warnf("Unsupported method passed down by bridge method[%v]", msg.Method)
 		}
@@ -140,8 +156,7 @@ func (gw *Gateway) handleOpenWebsocket(ctx context.Context, corrID string, args 
 	url, err := args.WsUrlTransform()
 	if err != nil {
 		logger.Warn("Failed to transform url to it's intended destination")
-		p := createProtoPackage(corrID, proto.OPEN_WEBSOCKET_RESULT, &proto.Args{WSID: wsid, Exception: err.Error()})
-		gw.send(ctx, p)
+		gw.wsChan <- wsChanItem{ctx: ctx, packet: createProtoPackage(corrID, proto.OPEN_WEBSOCKET_RESULT, &proto.Args{WSID: wsid, Exception: err.Error()})}
 		return
 	}
 
@@ -154,8 +169,7 @@ func (gw *Gateway) handleOpenWebsocket(ctx context.Context, corrID string, args 
 	ws, _, err := websocket.DefaultDialer.Dial(url.String(), nil)
 	if err != nil {
 		logger.Warnf("Failed to open websockets connection with destination[%v]", url.String())
-		p := createProtoPackage(corrID, proto.OPEN_WEBSOCKET_RESULT, &proto.Args{WSID: wsid, Exception: err.Error()})
-		gw.send(ctx, p)
+		gw.wsChan <- wsChanItem{ctx: ctx, packet: createProtoPackage(corrID, proto.OPEN_WEBSOCKET_RESULT, &proto.Args{WSID: wsid, Exception: err.Error()})}
 		return
 	}
 	defer ws.Close()
@@ -166,16 +180,14 @@ func (gw *Gateway) handleOpenWebsocket(ctx context.Context, corrID string, args 
 	gw.ws[wsid] = ws
 	gw.mutex.Unlock()
 
-	p := createProtoPackage(corrID, proto.OPEN_WEBSOCKET_RESULT, &proto.Args{WSID: wsid})
-	gw.send(ctx, p)
+	gw.wsChan <- wsChanItem{ctx: ctx, packet: createProtoPackage(corrID, proto.OPEN_WEBSOCKET_RESULT, &proto.Args{WSID: wsid})}
 
 	for {
 		_, wsMsg, err := ws.ReadMessage()
 		if err != nil {
 			// Inform bridge that downstream websockets is disconnected
 			logger.Warnf("Invalid message received [%v] Closing websockets connection ID [%v]", err, wsid)
-			p := createProtoPackage(corrID, proto.CLOSE_WEBSOCKET, &proto.Args{WSID: wsid})
-			gw.send(ctx, p)
+			gw.wsChan <- wsChanItem{ctx: ctx, packet: createProtoPackage(corrID, proto.CLOSE_WEBSOCKET, &proto.Args{WSID: wsid})}
 
 			gw.mutex.Lock()
 			delete(gw.ws, wsid)
@@ -184,8 +196,7 @@ func (gw *Gateway) handleOpenWebsocket(ctx context.Context, corrID string, args 
 		}
 		// Forward downstream websockets message to bridge
 		logger.Debug("Recv msg[%v]", string(wsMsg))
-		p := createProtoPackage(corrID, proto.WEBSOCKET_MSG, &proto.Args{WSID: wsid, Msg: string(wsMsg)})
-		gw.send(ctx, p)
+		gw.wsChan <- wsChanItem{ctx: ctx, packet: createProtoPackage(corrID, proto.WEBSOCKET_MSG, &proto.Args{WSID: wsid, Msg: string(wsMsg)})}
 	}
 }
 
