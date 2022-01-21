@@ -151,6 +151,10 @@ func (f *Forwarder) Serve(ctx context.Context, bridgingToken string, ws *websock
 	}
 
 	f.bridge = ws
+	defer func() {
+		logger.Info("bridge is disconnected")
+		f.bridge = nil
+	}()
 
 	for {
 		msgType, buf, err := ws.ReadMessage()
@@ -204,9 +208,6 @@ func (f *Forwarder) Serve(ctx context.Context, bridgingToken string, ws *websock
 			}
 		}
 	}
-
-	logger.Info("bridge is disconnected")
-	f.bridge = nil
 }
 
 func (f *Forwarder) req(ctx context.Context, method proto.PacketMethod, args *proto.Args) (*proto.Args, error) {
