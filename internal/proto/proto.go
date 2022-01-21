@@ -89,7 +89,7 @@ const (
 
 type Packet struct {
 	CorrID string       `json:"corr_id"`
-	Method PacketMethod `json:"method"` // desired operation: http, http_result, open_websocket etc.
+	Method PacketMethod `json:"method"`
 	Args   *Args        `json:"args"`
 }
 
@@ -139,29 +139,31 @@ func (p *Packet) SerializeJSON(ctx context.Context) ([]byte, error) {
 	return data, nil
 }
 
-func (p *Packet) Serialize(ctx context.Context, level int) ([]byte, error) {
+// Serialize converts the packet into byte array by json marshalling, and gzipped if compressor is not nil.
+// caller can reuse the same compressor to reduce cpu usage.
+func (p *Packet) Serialize(ctx context.Context, compressor *gzip.Writer) ([]byte, error) {
 	logger := log.Ctx(ctx)
 	data, err := p.SerializeJSON(ctx)
 	if err != nil {
 		return nil, err
 	}
 
-	var buf bytes.Buffer
-	w, err := gzip.NewWriterLevel(&buf, level)
-	if err != nil {
-		logger.Warnf("failed to create gzip writer error[%v]", err)
-		return nil, err
+	if compressor == nil {
+		return data, nil
 	}
-	_, err = w.Write(data)
+
+	var buf bytes.Buffer
+	compressor.Reset(&buf)
+	_, err = compressor.Write(data)
 	if err != nil {
 		logger.Warnf("failed to compress error[%v]", err)
 		return nil, err
 	}
-	if err = w.Flush(); err != nil {
+	if err = compressor.Flush(); err != nil {
 		logger.Warnf("failed to flush gzip writer error[%v]", err)
 		return nil, err
 	}
-	if err = w.Close(); err != nil {
+	if err = compressor.Close(); err != nil {
 		logger.Warnf("failed to close gzip writer error[%v]", err)
 		return nil, err
 	}

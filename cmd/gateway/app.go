@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"compress/gzip"
 	"context"
+	"io/ioutil"
 	"net/http"
 	"net/url"
 	"sync"
@@ -54,9 +55,12 @@ func (gw *Gateway) Run(conf *config.Config) {
 
 // flush will flush the channel by sending the messages to bridge.
 func (gw *Gateway) flush() {
+	compressor := gzip.NewWriter(ioutil.Discard)
+
 	for {
 		buf := <-gw.wsChan
-		gw.send(buf.ctx, buf.packet)
+		log.Ctx(buf.ctx).Debugf("send bridge [%s]", buf.packet)
+		gw.sendBridge(buf.ctx, buf.packet, compressor)
 	}
 }
 
@@ -80,14 +84,17 @@ func (gw *Gateway) connect(bridgeNetloc string, bridgeToken string, retry int) {
 
 	logrus.Info("Connected to bridge")
 	gw.bridge = wss
+	ctx := context.Background()
 
 	for {
 		// Incoming message from bridge
-		_, wsMsg, err := wss.ReadMessage()
-		ctx := context.Background()
+		msgType, wsMsg, err := wss.ReadMessage()
 		if err != nil {
 			logrus.Errorln("Read: ", err)
 			break
+		}
+		if msgType != websocket.BinaryMessage && msgType != websocket.TextMessage {
+			continue
 		}
 		msg, err := proto.Deserialize(ctx, wsMsg)
 		if err != nil {
@@ -109,10 +116,10 @@ func (gw *Gateway) connect(bridgeNetloc string, bridgeToken string, retry int) {
 		case proto.WEBSOCKET_MSG:
 			gw.mutex.Lock()
 			conn, present := gw.ws[args.WSID]
+			gw.mutex.Unlock()
 			if present {
 				send(ctx, conn, args.Msg)
 			}
-			gw.mutex.Unlock()
 		case proto.CLOSE_WEBSOCKET:
 			gw.mutex.Lock()
 			conn, present := gw.ws[args.WSID]
@@ -131,35 +138,25 @@ func (gw *Gateway) connect(bridgeNetloc string, bridgeToken string, retry int) {
 	}
 }
 
-// send by gateway transmits a packet from gateway to bridge.
-func (gw *Gateway) send(ctx context.Context, p *proto.Packet) {
-	send(ctx, gw.bridge, p)
+func (gw *Gateway) sendBridge(ctx context.Context, p *proto.Packet, compressor *gzip.Writer) {
+	msg, err := p.Serialize(ctx, compressor)
+	if err != nil {
+		return
+	}
+	err = gw.bridge.WriteMessage(websocket.BinaryMessage, msg)
+	if err != nil {
+		log.Ctx(ctx).Warnf("Failed to transmit packet to bridge")
+	}
 }
 
-// send is a generic wrapper to send data to websocket connections,
-// if data is of type string, it is converted to json before sending,
-// else if data is of type Packet, it is converted to json, then gzipped before sending.
-func send(ctx context.Context, conn *websocket.Conn, data interface{}) {
+// send transmits a string to the websocket conn.
+func send(ctx context.Context, conn *websocket.Conn, data string) {
 	logger := log.Ctx(ctx)
 	logger.Debugf("Send msg[%s]", data)
 
-	switch p := data.(type) {
-	case *proto.Packet:
-		msg, err := p.Serialize(ctx, gzip.DefaultCompression)
-		if err != nil {
-			return
-		}
-		err = conn.WriteMessage(websocket.BinaryMessage, msg)
-		if err != nil {
-			logger.Warnf("Failed to transmit packet to bridge")
-		}
-	case string:
-		err := conn.WriteMessage(websocket.TextMessage, []byte(p))
-		if err != nil {
-			logger.Warnf("Failed to forward websocket message to downstream service")
-		}
-	default:
-		logger.Warnf("Invalid data passed to send function")
+	err := conn.WriteMessage(websocket.TextMessage, []byte(data))
+	if err != nil {
+		logger.Warnf("Failed to forward websocket message to downstream service")
 	}
 }
 
@@ -214,7 +211,7 @@ func (gw *Gateway) handleOpenWebsocket(ctx context.Context, corrID string, args 
 			break
 		}
 		// Forward downstream websockets message to bridge
-		logger.Debug("Recv msg[%v]", string(wsMsg))
+		logger.Debug("Recv msg[%s]", string(wsMsg))
 		gw.wsChan <- wsChanItem{ctx: ctx, packet: createProtoPackage(corrID, proto.WEBSOCKET_MSG, &proto.Args{WSID: wsid, Msg: string(wsMsg)})}
 	}
 }
@@ -238,7 +235,7 @@ func (gw *Gateway) handleHttp(ctx context.Context, corrID string, args *proto.Ar
 		return
 	}
 
-	logger.Debugf("Build http Req [%+v]\n", req)
+	logger.Debugf("Build http Req [%+v]", req)
 
 	client := http.Client{}
 	resp, err := client.Do(req)
@@ -248,9 +245,11 @@ func (gw *Gateway) handleHttp(ctx context.Context, corrID string, args *proto.Ar
 		args := proto.MakeHTTPErrprRespArgs(500)
 		p = createProtoPackage(corrID, proto.HTTP_RESULT, args)
 	} else {
-		logger.Debugf("Recv http resp[%v]\n", resp)
+		logger.Debugf("Recv http resp[%v]", resp)
 		p = sanitizeResponse(ctx, resp, corrID)
 	}
+
+	logger.Infof("send bridge [%s]", p)
 	gw.wsChan <- wsChanItem{
 		ctx:    ctx,
 		packet: p,

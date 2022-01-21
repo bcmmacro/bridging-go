@@ -1,8 +1,10 @@
 package main
 
 import (
+	"compress/gzip"
 	"context"
 	"fmt"
+	"io/ioutil"
 	"net/http"
 	"os"
 	"strconv"
@@ -234,7 +236,12 @@ func (f *Forwarder) req(ctx context.Context, method proto.PacketMethod, args *pr
 
 func (f *Forwarder) send(ctx context.Context, p *proto.Packet) error {
 	logger := log.Ctx(ctx)
-	msg, err := p.Serialize(ctx, int(f.compressLevel))
+	w, err := gzip.NewWriterLevel(ioutil.Discard, int(f.compressLevel))
+	if err != nil {
+		logger.Warnf("failed to create gzip writer error[%v]", err)
+		return err
+	}
+	msg, err := p.Serialize(ctx, w)
 	if err != nil {
 		return err
 	}
