@@ -33,7 +33,7 @@ First, start Bridge on cloud DC:
 go run ./cmd/bridge
 ```
 
-An env file sample can be found at [.env.sample](bridge/.env.sample).
+An env file sample can be found at [.env.sample](cmd/bridge/.env.sample).
 
 After Bridge is up on cloud, start the Gateway on private DC:
 
@@ -41,7 +41,7 @@ After Bridge is up on cloud, start the Gateway on private DC:
 go run ./cmd/gateway <config.json>
 ```
 
-A config file sample can be found at [sample.json](gateway/sample.json).
+A config file sample can be found at [sample.json](cmd/gateway/sample.json).
 
 - Make sure `bridge_token` in Gateway config file is the same as `BRIDGE_TOKEN` in env file.
 - `whitelist` configures the resources on private DC that can be accessed on cloud.
