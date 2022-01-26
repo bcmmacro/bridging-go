@@ -24,8 +24,7 @@ type Args struct {
 	Msg        string              `json:"msg,omitempty"`
 	StatusCode int64               `json:"status_code,omitempty"`
 	Exception  string              `json:"exception,omitempty"`
-	Body       []int8              `json:"body,omitempty"`    // TODO(zzl) type []byte Bytes and add a Marshal() to Bytes
-	Content    string              `json:"content,omitempty"` // TODO(zzl) remove either Body or Content
+	Body       []byte              `json:"body,omitempty"`
 }
 
 func (args *Args) String() string {
@@ -38,7 +37,7 @@ func (args *Args) truncated() *Args {
 	return &Args{Method: args.Method, URL: args.URL,
 		Headers: args.Headers, Client: args.Client, WSID: args.WSID,
 		Msg: common.CutStr(args.Msg, 1000), StatusCode: args.StatusCode, Exception: args.Exception,
-		Body: common.CutInt8(args.Body, 1000), Content: common.CutStr(args.Content, 1000),
+		Body: common.CutByte(args.Body, 1000),
 	}
 }
 
@@ -193,7 +192,7 @@ func MakeHTTPReqArgs(ctx context.Context, r *http.Request) (*Args, error) {
 		logger.Warnf("failed to read body error[%v]", err)
 		return nil, err
 	} else {
-		args.Body = common.ByteSliceToIntSlice(body)
+		args.Body = body
 	}
 	return &args, nil
 }
@@ -213,7 +212,7 @@ func MakeHTTPRespArgs(ctx context.Context, r *http.Response) (*Args, error) {
 		logger.Warnf("failed to read body error[%v]", err)
 		return nil, err
 	} else {
-		args.Content = string(body)
+		args.Body = body
 	}
 	return &args, nil
 }
@@ -222,6 +221,5 @@ func MakeHTTPErrprRespArgs(statusCode int) *Args {
 	var args Args
 	args.Headers = nil
 	args.StatusCode = int64(statusCode)
-	args.Content = ""
 	return &args
 }

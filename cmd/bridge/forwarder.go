@@ -73,7 +73,7 @@ func (f *Forwarder) ForwardHTTP(ctx context.Context, w http.ResponseWriter, r *h
 	for k, v := range resp.Headers {
 		w.Header()[k] = v
 	}
-	w.Write([]byte(resp.Content))
+	w.Write(resp.Body)
 }
 
 func (f *Forwarder) ForwardOpenWebsocket(ctx context.Context, r *http.Request, ws *websocket.Conn) (string, error) {

@@ -15,7 +15,6 @@ import (
 
 	"github.com/bcmmacro/bridging-go/internal/config"
 	"github.com/bcmmacro/bridging-go/internal/proto"
-	"github.com/bcmmacro/bridging-go/library/common"
 	"github.com/bcmmacro/bridging-go/library/log"
 )
 
@@ -291,7 +290,7 @@ func deserializeRequest(ctx context.Context, args *proto.Args) (*http.Request, e
 		return nil, err
 	}
 
-	req, err := http.NewRequest(args.Method, url, bytes.NewReader(common.IntSliceToByteSlice(args.Body)))
+	req, err := http.NewRequest(args.Method, url, bytes.NewReader(args.Body))
 	if err != nil {
 		logger.Warn("Failed to parse args into a http request obj")
 		return req, err

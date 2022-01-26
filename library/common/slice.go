@@ -32,25 +32,9 @@ func CutInt(s []int64, limit int) []int64 {
 	return s[:limit]
 }
 
-func CutInt8(s []int8, limit int) []int8 {
+func CutByte(s []byte, limit int) []byte {
 	if len(s) < limit {
 		return s
 	}
 	return s[:limit]
-}
-
-func ByteSliceToIntSlice(s []byte) []int8 {
-	ret := make([]int8, len(s))
-	for i, b := range s {
-		ret[i] = int8(b)
-	}
-	return ret
-}
-
-func IntSliceToByteSlice(s []int8) []byte {
-	ret := make([]byte, len(s))
-	for i, b := range s {
-		ret[i] = byte(b)
-	}
-	return ret
 }
