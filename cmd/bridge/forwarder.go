@@ -128,12 +128,10 @@ func (f *Forwarder) ForwardCloseWebsocket(ctx context.Context, wsID string, ws *
 		f.mutex.Unlock()
 		return nil
 	}
+	delete(f.wss, wsID)
 	f.mutex.Unlock()
 
 	_, err := f.req(ctx, proto.CLOSE_WEBSOCKET, &proto.Args{WSID: wsID})
-	f.mutex.Lock()
-	delete(f.wss, wsID)
-	f.mutex.Unlock()
 	return err
 }
 
