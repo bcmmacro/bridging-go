@@ -47,7 +47,7 @@ func (h *Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		}()
 
 		if r.URL.Path == "/bridge" {
-			// TODO(zzl) change to Query param
+			// here uses HTTP headers, which supports more character set compared to HTTP query param.
 			bridgingToken := r.Header.Get("bridging-token")
 			h.forwarder.Serve(ctx, bridgingToken, conn)
 		} else {
