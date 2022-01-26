@@ -16,16 +16,16 @@ import (
 )
 
 type Args struct {
-	Method     string            `json:"method,omitempty"` // http method
-	URL        string            `json:"url,omitempty"`
-	Headers    map[string]string `json:"headers,omitempty"` // TODO(zzl) change to map[string][]string
-	Client     string            `json:"client,omitempty"`
-	WSID       string            `json:"ws_id,omitempty"`
-	Msg        string            `json:"msg,omitempty"`
-	StatusCode int64             `json:"status_code,omitempty"`
-	Exception  string            `json:"exception,omitempty"`
-	Body       []int8            `json:"body,omitempty"`    // TODO(zzl) type []byte Bytes and add a Marshal() to Bytes
-	Content    string            `json:"content,omitempty"` // TODO(zzl) remove either Body or Content
+	Method     string              `json:"method,omitempty"` // http method
+	URL        string              `json:"url,omitempty"`
+	Headers    map[string][]string `json:"headers,omitempty"`
+	Client     string              `json:"client,omitempty"`
+	WSID       string              `json:"ws_id,omitempty"`
+	Msg        string              `json:"msg,omitempty"`
+	StatusCode int64               `json:"status_code,omitempty"`
+	Exception  string              `json:"exception,omitempty"`
+	Body       []int8              `json:"body,omitempty"`    // TODO(zzl) type []byte Bytes and add a Marshal() to Bytes
+	Content    string              `json:"content,omitempty"` // TODO(zzl) remove either Body or Content
 }
 
 func (args *Args) String() string {
@@ -50,8 +50,8 @@ func (args *Args) UrlTransform() (string, error) {
 	}
 
 	for k, v := range args.Headers {
-		if strings.ToLower(k) == "bridging-base-url" {
-			url.Host = v
+		if strings.ToLower(k) == "bridging-base-url" && len(v) > 0 {
+			url.Host = v[0]
 		}
 	}
 	return url.String(), nil
@@ -184,11 +184,9 @@ func MakeHTTPReqArgs(ctx context.Context, r *http.Request) (*Args, error) {
 	args.URL = fmt.Sprintf("%s://%s%s", scheme, r.Host, r.URL.String())
 	args.Client = r.RemoteAddr
 
-	args.Headers = make(map[string]string)
+	args.Headers = make(map[string][]string)
 	for k, v := range r.Header {
-		for _, vv := range v {
-			args.Headers[k] = vv
-		}
+		args.Headers[k] = append([]string(nil), v...)
 	}
 
 	if body, err := ioutil.ReadAll(r.Body); err != nil {
@@ -204,11 +202,9 @@ func MakeHTTPRespArgs(ctx context.Context, r *http.Response) (*Args, error) {
 	logger := log.Ctx(ctx)
 	var args Args
 
-	args.Headers = make(map[string]string)
+	args.Headers = make(map[string][]string)
 	for k, v := range r.Header {
-		for _, vv := range v {
-			args.Headers[k] = vv
-		}
+		args.Headers[k] = append([]string(nil), v...)
 	}
 
 	args.StatusCode = int64(r.StatusCode)

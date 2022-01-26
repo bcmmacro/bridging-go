@@ -298,7 +298,9 @@ func deserializeRequest(ctx context.Context, args *proto.Args) (*http.Request, e
 	}
 
 	for k, v := range args.Headers {
-		req.Header.Add(k, v)
+		for _, vv := range v {
+			req.Header.Add(k, vv)
+		}
 	}
 	return req, nil
 }

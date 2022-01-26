@@ -71,7 +71,7 @@ func (f *Forwarder) ForwardHTTP(ctx context.Context, w http.ResponseWriter, r *h
 
 	w.WriteHeader(int(resp.StatusCode))
 	for k, v := range resp.Headers {
-		w.Header()[k] = []string{v}
+		w.Header()[k] = v
 	}
 	w.Write([]byte(resp.Content))
 }
